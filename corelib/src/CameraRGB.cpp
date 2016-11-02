@@ -716,7 +716,8 @@ CameraGrabberImage::CameraGrabberImage() :
         _filenamesAreTimestamps(false),
         syncImageRateWithStamps_(true),
         _groundTruthFormat(0),
-        _captureDelay(0.0)
+        _captureDelay(0.0),
+        _fileXML(false)
     {}
 CameraGrabberImage::CameraGrabberImage(const std::string & path,
                      float imageRate,
@@ -744,7 +745,8 @@ CameraGrabberImage::CameraGrabberImage(const std::string & path,
     _filenamesAreTimestamps(false),
     syncImageRateWithStamps_(true),
     _groundTruthFormat(0),
-    _captureDelay(0.0)
+    _captureDelay(0.0),
+    _fileXML(false)
 {
 
 }
@@ -779,6 +781,10 @@ bool CameraGrabberImage::init(const std::string & calibrationFolder, const std::
     {
         _dir = new UDirectory("/tmp/", "jpg ppm png bmp pnm tiff pgm");
     }
+
+    std::list<std::string> list = uSplit(_path, '.');
+    if(list.size() >= 2 && (list.back() == "xml" || list.back() == "XML"))
+        _fileXML = true;
 //    if(_path[_path.size()-1] != '\\' && _path[_path.size()-1] != '/')
 //    {
 //        _path.append("/");
@@ -1203,7 +1209,13 @@ SensorData CameraGrabberImage::captureImage(CameraInfo * info)
             ULOGGER_DEBUG("Loading image : %s", imageFilePath.c_str());
 
 #if CV_MAJOR_VERSION >2 || (CV_MAJOR_VERSION >=2 && CV_MINOR_VERSION >=4)
-            img = cv::imread(imageFilePath.c_str(), cv::IMREAD_UNCHANGED);
+            if(!_fileXML)
+                img = cv::imread(imageFilePath.c_str(), cv::IMREAD_UNCHANGED);
+            else
+            {
+                cv::FileStorage fs(imageFilePath.c_str(), cv::FileStorage::READ);
+                fs["depth_mat"] >> img;
+            }
 #else
             img = cv::imread(imageFilePath.c_str(), -1);
 #endif

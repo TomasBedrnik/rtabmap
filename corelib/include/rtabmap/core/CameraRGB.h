@@ -284,6 +284,8 @@ private:
 
         UTimer _captureTimer;
         double _captureDelay;
+
+        bool _fileXML;
 };
 
 

@@ -71,7 +71,8 @@ int main(int argc, char * argv[])
 //    }
     //camera = new CameraFreenect2(0, CameraFreenect2::kTypeColor2DepthSD, 0, opticalRotation);
     //camera = new CameraRGBDGrabber("/home/beda/data/skola/_Oulu/kinectData/rgb/","/home/beda/data/skola/_Oulu/kinectData/depth/",1.0,0.0, opticalRotation);
-    camera = new CameraRGBDGrabber("/tmp/images/rgb/rgb.png","/tmp/images/depth/depth.png",1.0,0.0, opticalRotation);
+    //camera = new CameraRGBDGrabber("/tmp/images/rgb/rgb.png","/tmp/images/depth/depth.png",1.0,0.0, opticalRotation);
+    camera = new CameraRGBDGrabber("/tmp/images/rgb/rgb.png","/tmp/images/depth_mat/depth_mat.xml",1.0,0.0, opticalRotation);
 
 
     if(!camera->init("/home/beda/data/skola/_Oulu/kinectData/","calib2"))
