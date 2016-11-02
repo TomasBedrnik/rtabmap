@@ -345,4 +345,33 @@ private:
 	CameraImages cameraDepth_;
 };
 
+/////////////////////////
+// CameraRGBDGrabber
+/////////////////////////
+class RTABMAP_EXP CameraRGBDGrabber :
+        public CameraGrabberImage
+{
+public:
+        static bool available();
+
+public:
+        CameraRGBDGrabber(
+                        const std::string & pathRGBImages,
+                        const std::string & pathDepthImages,
+                        float depthScaleFactor = 1.0f,
+                        float imageRate=0.0f,
+                        const Transform & localTransform = Transform::getIdentity());
+        virtual ~CameraRGBDGrabber();
+
+        virtual bool init(const std::string & calibrationFolder = ".", const std::string & cameraName = "");
+        virtual bool isCalibrated() const;
+        virtual std::string getSerial() const;
+
+protected:
+        virtual SensorData captureImage(CameraInfo * info = 0);
+
+private:
+        CameraGrabberImage cameraDepth_;
+};
+
 } // namespace rtabmap

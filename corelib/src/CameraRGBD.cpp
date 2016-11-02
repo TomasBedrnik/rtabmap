@@ -2236,5 +2236,76 @@ SensorData CameraRGBDImages::captureImage(CameraInfo * info)
 	return data;
 }
 
+//
+// CameraRGBDGrabber
+//
+bool CameraRGBDGrabber::available()
+{
+    return true;
+}
+
+CameraRGBDGrabber::CameraRGBDGrabber(
+        const std::string & pathRGBImages,
+        const std::string & pathDepthImages,
+        float depthScaleFactor,
+        float imageRate,
+        const Transform & localTransform) :
+        CameraGrabberImage(pathRGBImages, imageRate, localTransform)
+{
+    UASSERT(depthScaleFactor >= 1.0);
+    cameraDepth_.setPath(pathDepthImages);
+    cameraDepth_.setDepth(true, depthScaleFactor);
+}
+
+CameraRGBDGrabber::~CameraRGBDGrabber()
+{
+}
+
+bool CameraRGBDGrabber::init(const std::string & calibrationFolder, const std::string & cameraName)
+{
+    bool success = false;
+    if(CameraGrabberImage::init(calibrationFolder, cameraName) && cameraDepth_.init())
+    {
+        if(this->imagesCount() == cameraDepth_.imagesCount())
+        {
+            success = true;
+        }
+        else
+        {
+            UERROR("Cameras don't have the same number of images (%d vs %d)",
+                    this->imagesCount(), cameraDepth_.imagesCount());
+        }
+    }
+
+    return success;
+}
+
+bool CameraRGBDGrabber::isCalibrated() const
+{
+    return this->cameraModel().isValidForProjection();
+}
+
+std::string CameraRGBDGrabber::getSerial() const
+{
+    return this->cameraModel().name();
+}
+
+SensorData CameraRGBDGrabber::captureImage(CameraInfo * info)
+{
+    SensorData data;
+
+    SensorData rgb, depth;
+    rgb = CameraGrabberImage::captureImage(info);
+    if(!rgb.imageRaw().empty())
+    {
+        depth = cameraDepth_.takeImage();
+        if(!depth.depthRaw().empty())
+        {
+            data = SensorData(rgb.imageRaw(), depth.depthRaw(), rgb.cameraModels(), rgb.id(), rgb.stamp());
+            data.setGroundTruth(rgb.groundTruth());
+        }
+    }
+    return data;
+}
 
 } // namespace rtabmap
