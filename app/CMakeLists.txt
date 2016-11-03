@@ -1,6 +1,6 @@
 
 IF(ANDROID)
-   ADD_SUBDIRECTORY( android )
+   #ADD_SUBDIRECTORY( android )
 ELSE()
-   ADD_SUBDIRECTORY( src )
+   #ADD_SUBDIRECTORY( src )
 ENDIF()
