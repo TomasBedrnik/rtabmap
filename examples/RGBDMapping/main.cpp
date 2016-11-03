@@ -50,7 +50,7 @@ void showUsage()
 }
 
 using namespace rtabmap;
-int main(int argc, char * argv[])
+int main(int argc, char **argv)
 {
     std::vector<std::string> args(argv, argv + argc);
     args.erase(args.begin());
