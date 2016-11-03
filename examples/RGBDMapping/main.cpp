@@ -52,6 +52,137 @@ void showUsage()
 using namespace rtabmap;
 int main(int argc, char * argv[])
 {
+    std::vector<std::string> args(argv, argv + argc);
+    args.erase(args.begin());
+    bool help = false;
+    std::string dir = "";
+    std::string rgb_image = "";
+    std::string depth_image = "";
+    std::string calibration = "";
+    float freq = 0;
+
+    for(std::string arg : args)
+    {
+        if(arg.at(0) != '-' || arg == "help" || arg == "-help" || arg == "--help")
+        {
+            help = true;
+            break;
+        }
+        arg.erase(arg.begin(),arg.begin()+1);
+        if(arg.substr(0,3) == "dir")
+        {
+            dir = arg.substr(4,arg.length()-4);
+            std::cout << "Main path:   " << dir << ";" << std::endl;
+        }
+        else if(arg.substr(0,1) == "f")
+        {
+            freq = std::stof(arg.substr(2,arg.length()-2));
+            std::cout << "Frequency:   " << freq << "Hz;" << std::endl;
+        }
+        else if(arg.substr(0,9) == "rgb_image")
+        {
+            rgb_image = arg.substr(10,arg.length()-10);
+            std::cout << "RGB Image Path:   " << rgb_image << ";" << std::endl;
+        }
+        else if(arg.substr(0,11) == "depth_image")
+        {
+            depth_image = arg.substr(12,arg.length()-12);
+            std::cout << "Depth Image Path:   " << depth_image << ";" << std::endl;
+        }
+        else if(arg.substr(0,11) == "calibration")
+        {
+            calibration = arg.substr(12,arg.length()-12);
+            std::cout << "Calibration Path:   " << calibration << ";" << std::endl;
+        }
+    }
+
+    if(help)
+    {
+        std::cout << "RTAB-Map tester" << std::endl;
+        std::cout << "======================" << std::endl;
+        std::cout << "Available Parameters:" << std::endl;
+        std::cout << "-dir          -dir=/tmp/grabber" << std::endl;
+        std::cout << "     Base tmp directory where data is stored." << std::endl;
+        std::cout << "     If not set /tmp/kinect2 is used." << std::endl;
+        std::cout << "-f            -f=60" << std::endl;
+        std::cout << "     Capture frequency in Hz." << std::endl;
+        std::cout << "     If not set or set to 0, data is read as fast as possible." << std::endl;
+        std::cout << "-rgb_image    -rgb_image=/tmp/rgb.png" << std::endl;
+        std::cout << "     RGB image mapped to depth." << std::endl;
+        std::cout << "     If not set dir/rgb/rgb.png is used." << std::endl;
+        std::cout << "-depth_image    -depth_image=/tmp/depth.png" << std::endl;
+        std::cout << "     Depth image or xml file." << std::endl;
+        std::cout << "     If not set dir/depth/depth.png is used." << std::endl;
+        std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
+        std::cout << "     Calibration .yaml file." << std::endl;
+        std::cout << "     If not set, default is created in dir and used." << std::endl;
+        std::cout << " --------------------------------------" << std::endl;
+        std::cout << " -help" << std::endl;
+        std::cout << "     Print this help." << std::endl;
+        return 0;
+    }
+
+    if(dir == "")
+        dir = "/tmp/kinect2";
+    if(depth_image == "")
+        depth_image = dir+"/depth/depth.png";
+    if(rgb_image == "")
+        rgb_image = dir+"/rgb/rgb.png";
+
+    std::string calibration_path = "";
+    std::string calibration_name = "";
+    if(calibration == "")
+    {
+        calibration_path = dir;
+        calibration_name = "default";
+        std::ofstream calibration_file;
+        calibration_file.open (calibration_path+"/"+calibration_name+".yaml");
+
+        calibration_file << "%YAML:1.0" << std::endl;
+        calibration_file << "camera_name: calib2" << std::endl;
+        calibration_file << "image_width: 512" << std::endl;
+        calibration_file << "image_height: 424" << std::endl;
+        calibration_file << "camera_matrix:" << std::endl;
+        calibration_file << "   rows: 3" << std::endl;
+        calibration_file << "   cols: 3" << std::endl;
+        calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02, 0.," << std::endl;
+        calibration_file << "       3.6097502114915272e+02, 1.7767928198595087e+02, 0., 0., 1. ]" << std::endl;
+        calibration_file << "distortion_coefficients:" << std::endl;
+        calibration_file << "   rows: 1" << std::endl;
+        calibration_file << "   cols: 5" << std::endl;
+        calibration_file << "   data: [ 1.1618214944736524e-01, -3.7391857743275664e-01," << std::endl;
+        calibration_file << "       -2.3108157640784072e-02, 4.0215076909925294e-03," << std::endl;
+        calibration_file << "       3.5294410947770366e-01 ]" << std::endl;
+        calibration_file << "distortion_model: plumb_bob" << std::endl;
+        calibration_file << "rectification_matrix:" << std::endl;
+        calibration_file << "   rows: 3" << std::endl;
+        calibration_file << "   cols: 3" << std::endl;
+        calibration_file << "   data: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]" << std::endl;
+        calibration_file << "projection_matrix:" << std::endl;
+        calibration_file << "   rows: 3" << std::endl;
+        calibration_file << "   cols: 4" << std::endl;
+        calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02," << std::endl;
+        calibration_file << "       4.0215076909925294e-03, 0., 3.6097502114915272e+02," << std::endl;
+        calibration_file << "       1.7767928198595087e+02, 0., 0., 0., 1., 1. ]" << std::endl;
+
+        calibration_file.close();
+    }
+    else
+    {
+          std::size_t found = calibration.find_last_of("/\\");
+          calibration_path = calibration.substr(0,found);
+          calibration_name = calibration.substr(found+1);
+          if(calibration_name.substr(calibration_name.length()-4,4) != "yaml")
+          {
+              std::cout << "Calibration fine not found." << std::endl;
+              return -1;
+          }
+          else
+          {
+              calibration_name = calibration_name.substr(0,calibration_name.length()-5);
+          }
+    }
+
     ULogger::setType(ULogger::kTypeConsole);
     ULogger::setLevel(ULogger::kWarning);
 
@@ -71,11 +202,11 @@ int main(int argc, char * argv[])
 //    }
     //camera = new CameraFreenect2(0, CameraFreenect2::kTypeColor2DepthSD, 0, opticalRotation);
     //camera = new CameraRGBDGrabber("/home/beda/data/skola/_Oulu/kinectData/rgb/","/home/beda/data/skola/_Oulu/kinectData/depth/",1.0,0.0, opticalRotation);
-    //camera = new CameraRGBDGrabber("/tmp/images/rgb/rgb.png","/tmp/images/depth/depth.png",1.0,0.0, opticalRotation);
-    camera = new CameraRGBDGrabber("/tmp/images/rgb/rgb.png","/tmp/images/depth_mat/depth_mat.xml",1.0,0.0, opticalRotation);
+    //camera = new CameraRGBDGrabber("/tmp/kinect2/rgb/rgb.png","/tmp/kinect2/depth/depth.png",1.0,0.0, opticalRotation);
+    //camera = new CameraRGBDGrabber("/tmp/kinect2/rgb/rgb.png","/tmp/kinect2/depth_mat/depth_mat.xml",1.0,0.0, opticalRotation);
+    camera = new CameraRGBDGrabber(rgb_image,depth_image,1.0,freq, opticalRotation);
 
-
-    if(!camera->init("/home/beda/data/skola/_Oulu/kinectData/","calib2"))
+    if(!camera->init(calibration_path,calibration_name))
     {
         UERROR("Camera init failed!");
     }

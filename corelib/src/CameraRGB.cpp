@@ -848,7 +848,7 @@ bool CameraGrabberImage::init(const std::string & calibrationFolder, const std::
     UINFO("calibration folder=%s name=%s", calibrationFolder.c_str(), cameraName.c_str());
     if(!calibrationFolder.empty() && !cameraName.empty())
     {
-        if(!_model.load(calibrationFolder, cameraName))
+        if(!_model.load(calibrationFolder, cameraName))//HERE!
         {
             UWARN("Missing calibration files for camera \"%s\" in \"%s\" folder, you should calibrate the camera!",
                     cameraName.c_str(), calibrationFolder.c_str());
