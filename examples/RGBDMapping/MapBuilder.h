@@ -46,6 +46,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/OdometryEvent.h"
 #include "rtabmap/core/CameraThread.h"
 
+#include <pcl/io/pcd_io.h>
+#include <pcl/filters/filter.h>
+
 using namespace rtabmap;
 
 // This class receives RtabmapEvent and construct/update a 3D Map
@@ -136,11 +139,12 @@ protected slots:
 					2,     // decimation
 					4.0f); // max depth
 				if(cloud->size())
-				{
-					if(!cloudViewer_->addCloud("cloudOdom", cloud, odometryCorrection_*pose))
-					{
-						UERROR("Adding cloudOdom to viewer failed!");
-					}
+                                {
+                                    //current cloud
+                                        if(!cloudViewer_->addCloud("cloudOdom", cloud, odometryCorrection_*pose))
+                                        {
+                                                UERROR("Adding cloudOdom to viewer failed!");
+                                        }
 				}
 				else
 				{
@@ -152,7 +156,8 @@ protected slots:
 			if(!odom.pose().isNull())
 			{
 				// update camera position
-				cloudViewer_->updateCameraTargetPosition(odometryCorrection_*odom.pose());
+                                //and white slownly disappearing line of camera position
+                                cloudViewer_->updateCameraTargetPosition(odometryCorrection_*odom.pose());
 			}
 		}
 		cloudViewer_->update();
@@ -163,90 +168,104 @@ protected slots:
 
 	virtual void processStatistics(const rtabmap::Statistics & stats)
 	{
-		processingStatistics_ = true;
+                processingStatistics_ = true;
 
-		//============================
-		// Add RGB-D clouds
-		//============================
-		const std::map<int, Transform> & poses = stats.poses();
-		QMap<std::string, Transform> clouds = cloudViewer_->getAddedClouds();
-		for(std::map<int, Transform>::const_iterator iter = poses.begin(); iter!=poses.end(); ++iter)
-		{
-			if(!iter->second.isNull())
-			{
-				std::string cloudName = uFormat("cloud%d", iter->first);
+                //============================
+                // Add RGB-D clouds
+                //============================
+                const std::map<int, Transform> & poses = stats.poses();
+                QMap<std::string, Transform> clouds = cloudViewer_->getAddedClouds();
+                for(std::map<int, Transform>::const_iterator iter = poses.begin(); iter!=poses.end(); ++iter)
+                {
+                        if(!iter->second.isNull())
+                        {
+                                std::string cloudName = uFormat("cloud%d", iter->first);
 
-				// 3d point cloud
-				if(clouds.contains(cloudName))
-				{
-					// Update only if the pose has changed
-					Transform tCloud;
-					cloudViewer_->getPose(cloudName, tCloud);
-					if(tCloud.isNull() || iter->second != tCloud)
-					{
-						if(!cloudViewer_->updateCloudPose(cloudName, iter->second))
-						{
-							UERROR("Updating pose cloud %d failed!", iter->first);
-						}
-					}
-					cloudViewer_->setCloudVisibility(cloudName, true);
-				}
-				else if(uContains(stats.getSignatures(), iter->first))
-				{
-					Signature s = stats.getSignatures().at(iter->first);
-					s.sensorData().uncompressData(); // make sure data is uncompressed
-					// Add the new cloud
-					pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = util3d::cloudRGBFromSensorData(
-							s.sensorData(),
-						    4,     // decimation
-						    4.0f); // max depth
-					if(cloud->size())
-					{
-						if(!cloudViewer_->addCloud(cloudName, cloud, iter->second))
-						{
-							UERROR("Adding cloud %d to viewer failed!", iter->first);
-						}
-					}
-					else
-					{
-						UWARN("Empty cloud %d!", iter->first);
-					}
-				}
-			}
-			else
-			{
-				UWARN("Null pose for %d ?!?", iter->first);
-			}
-		}
+                                // 3d point cloud
+                                if(clouds.contains(cloudName))
+                                {
+                                        // Update only if the pose has changed
+                                        Transform tCloud;
+                                        cloudViewer_->getPose(cloudName, tCloud);
+                                        if(tCloud.isNull() || iter->second != tCloud)
+                                        {
+                                                if(!cloudViewer_->updateCloudPose(cloudName, iter->second))
+                                                {
+                                                        UERROR("Updating pose cloud %d failed!", iter->first);
+                                                }
+                                                std::cout << "UPDATE position: " << cloudName << std::endl;
+                                        }
+                                        cloudViewer_->setCloudVisibility(cloudName, true);
+                                }
+                                else if(uContains(stats.getSignatures(), iter->first))
+                                {
+                                        Signature s = stats.getSignatures().at(iter->first);
+                                        s.sensorData().uncompressData(); // make sure data is uncompressed
+                                        // Add the new cloud
+                                        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud = util3d::cloudRGBFromSensorData(
+                                                        s.sensorData(),
+                                                    4,     // decimation
+                                                    4.0f); // max depth
+                                        if(cloud->size())
+                                        {
+                                                if(!cloudViewer_->addCloud(cloudName, cloud, iter->second))
+                                                {
+                                                        UERROR("Adding cloud %d to viewer failed!", iter->first);
+                                                }
+                                                std::cout << "Add: "<<cloudName<<"|"<<std::endl;
+                                                pcl::PCDWriter writer;
+                                                std::vector<int> indices;
+                                                pcl::PointCloud<pcl::PointXYZRGB>::Ptr outputCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+                                                pcl::removeNaNFromPointCloud(*cloud, *outputCloud, indices);
+                                                writer.write ("/tmp/"+cloudName+".pcd", *outputCloud, false);
 
-		//============================
-		// Add 3D graph (show all poses)
-		//============================
-		cloudViewer_->removeAllGraphs();
-		cloudViewer_->removeCloud("graph_nodes");
-		if(poses.size())
-		{
-			// Set graph
-			pcl::PointCloud<pcl::PointXYZ>::Ptr graph(new pcl::PointCloud<pcl::PointXYZ>);
-			pcl::PointCloud<pcl::PointXYZ>::Ptr graphNodes(new pcl::PointCloud<pcl::PointXYZ>);
-			for(std::map<int, Transform>::const_iterator iter=poses.begin(); iter!=poses.end(); ++iter)
-			{
-				graph->push_back(pcl::PointXYZ(iter->second.x(), iter->second.y(), iter->second.z()));
-			}
-			*graphNodes = *graph;
+                                                std::ofstream poseFile;
+                                                poseFile.open ("/tmp/"+cloudName+".pose");
+                                                poseFile << iter->second << std::endl;
+                                                poseFile.close();
+                                        }
+                                        else
+                                        {
+                                                UWARN("Empty cloud %d!", iter->first);
+                                        }
+                                }
+                        }
+                        else
+                        {
+                                UWARN("Null pose for %d ?!?", iter->first);
+                        }
+                }
+
+                //============================
+                // Add 3D graph (show all poses)
+                //============================
+                cloudViewer_->removeAllGraphs();
+                cloudViewer_->removeCloud("graph_nodes");
+                if(poses.size())
+                {
+                    //lines with green points
+
+                        // Set graph
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr graph(new pcl::PointCloud<pcl::PointXYZ>);
+                        pcl::PointCloud<pcl::PointXYZ>::Ptr graphNodes(new pcl::PointCloud<pcl::PointXYZ>);
+                        for(std::map<int, Transform>::const_iterator iter=poses.begin(); iter!=poses.end(); ++iter)
+                        {
+                                graph->push_back(pcl::PointXYZ(iter->second.x(), iter->second.y(), iter->second.z()));
+                        }
+                        *graphNodes = *graph;
 
 
-			// add graph
-			cloudViewer_->addOrUpdateGraph("graph", graph, Qt::gray);
-			cloudViewer_->addCloud("graph_nodes", graphNodes, Transform::getIdentity(), Qt::green);
-			cloudViewer_->setCloudPointSize("graph_nodes", 5);
-		}
+                        // add graph
+                        cloudViewer_->addOrUpdateGraph("graph", graph, Qt::gray);
+                        cloudViewer_->addCloud("graph_nodes", graphNodes, Transform::getIdentity(), Qt::green);
+                        cloudViewer_->setCloudPointSize("graph_nodes", 5);
+                }
 
-		odometryCorrection_ = stats.mapCorrection();
+                odometryCorrection_ = stats.mapCorrection();
 
-		cloudViewer_->update();
+                cloudViewer_->update();
 
-		processingStatistics_ = false;
+                processingStatistics_ = false;
 	}
 
 	virtual void handleEvent(UEvent * event)
