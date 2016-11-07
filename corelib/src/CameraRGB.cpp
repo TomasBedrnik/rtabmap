@@ -598,7 +598,7 @@ SensorData CameraImages::captureImage(CameraInfo * info)
 #endif
 				if(img.channels()>3)
 				{
-					UWARN("Conversion from 4 channels to 3 channels (file=%s)", imageFilePath.c_str());
+                    UWARN("Conversion from 4 channels to 3 channels (file=%s)", imageFilePath.c_str());
 					cv::Mat out;
 					cv::cvtColor(img, out, CV_BGRA2BGR);
 					img = out;
@@ -1252,7 +1252,7 @@ SensorData CameraGrabberImage::captureImage(CameraInfo * info)
 #endif
                 if(img.channels()>3)
                 {
-                    UWARN("Conversion from 4 channels to 3 channels (file=%s)", imageFilePath.c_str());
+                    //UWARN("Conversion from 4 channels to 3 channels (file=%s)", imageFilePath.c_str());
                     cv::Mat out;
                     cv::cvtColor(img, out, CV_BGRA2BGR);
                     img = out;
