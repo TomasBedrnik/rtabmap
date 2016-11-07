@@ -26,7 +26,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <rtabmap/core/Rtabmap.h>
-#include <rtabmap/core/CameraStereo.h>
+#include <rtabmap/core/CameraRGBD.h>
 #include <rtabmap/utilite/UThread.h>
 #include "MapBuilder.h"
 #include <pcl/visualization/cloud_viewer.h>
@@ -36,78 +36,67 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 using namespace rtabmap;
 
-void showUsage()
-{
-	printf("\nUsage:\n"
-			"rtabmap-noEventsExample camera_rate odom_update map_update calibration_dir calibration_name path_left_images path_right_images\n"
-			"Description:\n"
-			"    camera_rate          Rate (Hz) of the camera.\n"
-			"    odom_update          Do odometry update each X camera frames.\n"
-			"    map_update           Do map update each X odometry frames.\n"
-			"\n"
-			"Example:\n"
-			"     (with images from \"https://github.com/introlab/rtabmap/wiki/Stereo-mapping#process-a-directory-of-stereo-images\") \n"
-			"     $ rtabmap-noEventsExample 20 2 10 stereo_20hz stereo_20Hz stereo_20hz/left stereo_20hz/right\n"
-			"       Camera rate = 20 Hz\n"
-			"       Odometry update rate = 10 Hz\n"
-			"       Map update rate = 1 Hz\n");
-	exit(1);
-}
-
-int main(int argc, char * argv[])
+int main(int argc, char **argv)
 {
 	ULogger::setType(ULogger::kTypeConsole);
 	ULogger::setLevel(ULogger::kError);
 
-	if(argc < 8)
-	{
-		showUsage();
-	}
-
-	int argIndex = 1;
-	int cameraRate = atoi(argv[argIndex++]);
-	if(cameraRate <= 0)
-	{
-		printf("camera_rate should be > 0\n");
-		showUsage();
-	}
-	int odomUpdate = atoi(argv[argIndex++]);
-	if(odomUpdate <= 0)
-	{
-		printf("odom_update should be > 0\n");
-		showUsage();
-	}
-	int mapUpdate = atoi(argv[argIndex++]);
-	if(mapUpdate <= 0)
-	{
-		printf("map_update should be > 0\n");
-		showUsage();
-	}
+    int cameraRate = 10000;
+    int odomUpdate = 10;
+    int mapUpdate = 10;
+    std::string dir = "/tmp/kinect2";
+    std::string depth_image = dir+"/depth/depth.png";
+    std::string rgb_image = dir+"/rgb/rgb.png";
 
 	printf("Camera rate = %d Hz\n", cameraRate);
 	printf("Odometry update rate = %d Hz\n", cameraRate/odomUpdate);
 	printf("Map update rate = %d Hz\n", (cameraRate/odomUpdate)/mapUpdate);
 
-	std::string calibrationDir = argv[argIndex++];
-	std::string calibrationName = argv[argIndex++];
-	std::string pathLeftImages = argv[argIndex++];
-	std::string pathRightImages = argv[argIndex++];
+    std::string calibration_path = dir;
+    std::string calibration_name = "default";
+    std::ofstream calibration_file;
+    calibration_file.open (calibration_path+"/"+calibration_name+".yaml");
+
+    calibration_file << "%YAML:1.0" << std::endl;
+    calibration_file << "camera_name: calib2" << std::endl;
+    calibration_file << "image_width: 512" << std::endl;
+    calibration_file << "image_height: 424" << std::endl;
+    calibration_file << "camera_matrix:" << std::endl;
+    calibration_file << "   rows: 3" << std::endl;
+    calibration_file << "   cols: 3" << std::endl;
+    calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02, 0.," << std::endl;
+    calibration_file << "       3.6097502114915272e+02, 1.7767928198595087e+02, 0., 0., 1. ]" << std::endl;
+    calibration_file << "distortion_coefficients:" << std::endl;
+    calibration_file << "   rows: 1" << std::endl;
+    calibration_file << "   cols: 5" << std::endl;
+    calibration_file << "   data: [ 1.1618214944736524e-01, -3.7391857743275664e-01," << std::endl;
+    calibration_file << "       -2.3108157640784072e-02, 4.0215076909925294e-03," << std::endl;
+    calibration_file << "       3.5294410947770366e-01 ]" << std::endl;
+    calibration_file << "distortion_model: plumb_bob" << std::endl;
+    calibration_file << "rectification_matrix:" << std::endl;
+    calibration_file << "   rows: 3" << std::endl;
+    calibration_file << "   cols: 3" << std::endl;
+    calibration_file << "   data: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]" << std::endl;
+    calibration_file << "projection_matrix:" << std::endl;
+    calibration_file << "   rows: 3" << std::endl;
+    calibration_file << "   cols: 4" << std::endl;
+    calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02," << std::endl;
+    calibration_file << "       4.0215076909925294e-03, 0., 3.6097502114915272e+02," << std::endl;
+    calibration_file << "       1.7767928198595087e+02, 0., 0., 0., 1., 1. ]" << std::endl;
+
+    calibration_file.close();
+
 
 	Transform opticalRotation(0,0,1,0, -1,0,0,0, 0,-1,0,0);
-	CameraStereoImages camera(
-			pathLeftImages,
-			pathRightImages,
-			false, // assume that images are already rectified
-			(float)cameraRate,
-			opticalRotation);
+    CameraRGBDGrabber camera(rgb_image,depth_image,1.0,cameraRate, opticalRotation);
 
-	if(camera.init(calibrationDir, calibrationName))
+    if(camera.init(calibration_path,calibration_name))
 	{
 		OdometryF2M odom;
 		Rtabmap rtabmap;
 		rtabmap.init();
 
-		QApplication app(argc, argv);
+        QApplication app(argc, argv);
 		MapBuilder mapBuilder;
 		mapBuilder.show();
 		QApplication::processEvents();
