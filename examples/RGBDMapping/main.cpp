@@ -41,14 +41,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "MapBuilder.h"
 
-void showUsage()
-{
-    printf("\nUsage:\n"
-           "rtabmap-rgbd_mapping driver\n"
-           "  driver       Driver number to use: 0=OpenNI-PCL, 1=OpenNI2, 2=Freenect, 3=OpenNI-CV, 4=OpenNI-CV-ASUS, 5=Freenect2, 6=ZED SDK, 7=RealSense\n\n");
-    exit(1);
-}
-
 using namespace rtabmap;
 int main(int argc, char **argv)
 {
@@ -217,7 +209,7 @@ int main(int argc, char **argv)
     // GUI stuff, there the handler will receive RtabmapEvent and construct the map
     // We give it the camera so the GUI can pause/resume the camera
     QApplication app(argc, argv);
-    MapBuilder mapBuilder(&cameraThread);
+    MapBuilder mapBuilder(&cameraThread,dir);
 
     // Create an odometry thread to process camera events, it will send OdometryEvent.
     OdometryThread odomThread(new OdometryF2M());
@@ -260,50 +252,56 @@ int main(int argc, char **argv)
     rtabmapThread.join(true);
 
     // Save 3D map
-    printf("Saving rtabmap_cloud.pcd...\n");
-    std::map<int, Signature> nodes;
-    std::map<int, Transform> optimizedPoses;
-    std::multimap<int, Link> links;
-    rtabmap->get3DMap(nodes, optimizedPoses, links, true, true);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    for(std::map<int, Transform>::iterator iter=optimizedPoses.begin(); iter!=optimizedPoses.end(); ++iter)
-    {
-        Signature node = nodes.find(iter->first)->second;
 
-        // uncompress data
-        node.sensorData().uncompressData();
+//    boost::posix_time::ptime tick = boost::posix_time::microsec_clock::local_time();
+//    printf("Saving rtabmap_cloud.pcd...\n");
+//    std::map<int, Signature> nodes;
+//    std::map<int, Transform> optimizedPoses;
+//    std::multimap<int, Link> links;
+//    rtabmap->get3DMap(nodes, optimizedPoses, links, true, true);
+//    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+//    for(std::map<int, Transform>::iterator iter=optimizedPoses.begin(); iter!=optimizedPoses.end(); ++iter)
+//    {
+//        Signature node = nodes.find(iter->first)->second;
 
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp = util3d::cloudRGBFromSensorData(
-                    node.sensorData(),
-                    4,           // image decimation before creating the clouds
-                    4.0f,        // maximum depth of the cloud
-                    0.01f);  // Voxel grid filtering
-        *cloud += *util3d::transformPointCloud(tmp, iter->second); // transform the point cloud to its pose
-    }
-    if(cloud->size())
-    {
-        printf("Voxel grid filtering of the assembled cloud (voxel=%f, %d points)\n", 0.01f, (int)cloud->size());
-        cloud = util3d::voxelize(cloud, 0.01f);
+//        // uncompress data
+//        node.sensorData().uncompressData();
 
-        printf("Saving rtabmap_cloud.pcd... done! (%d points)\n", (int)cloud->size());
-        pcl::io::savePCDFile("rtabmap_cloud.pcd", *cloud);
-        //pcl::io::savePLYFile("rtabmap_cloud.ply", *cloud); // to save in PLY format
-    }
-    else
-    {
-        printf("Saving rtabmap_cloud.pcd... failed! The cloud is empty.\n");
-    }
+//        pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp = util3d::cloudRGBFromSensorData(
+//                    node.sensorData(),
+//                    4,           // image decimation before creating the clouds
+//                    4.0f,        // maximum depth of the cloud
+//                    0.01f);  // Voxel grid filtering
+//        *cloud += *util3d::transformPointCloud(tmp, iter->second); // transform the point cloud to its pose
+//    }
+//    if(cloud->size())
+//    {
+//        printf("Voxel grid filtering of the assembled cloud (voxel=%f, %d points)\n", 0.01f, (int)cloud->size());
+//        cloud = util3d::voxelize(cloud, 0.01f);
 
-    // Save trajectory
-    printf("Saving rtabmap_trajectory.txt ...\n");
-    if(optimizedPoses.size() && graph::exportPoses("rtabmap_trajectory.txt", 0, optimizedPoses, links))
-    {
-        printf("Saving rtabmap_trajectory.txt... done!\n");
-    }
-    else
-    {
-        printf("Saving rtabmap_trajectory.txt... failed!\n");
-    }
+//        printf("Saving rtabmap_cloud.pcd... done! (%d points)\n", (int)cloud->size());
+//        boost::posix_time::ptime now = boost::posix_time::microsec_clock::local_time();
+//        double diff = (now-tick).total_milliseconds()/1000.0;
+//        //printf("Elapsed time = %d\n", diff);
+//        std::cout << "Elapsed time = " << diff << std::endl;
+//        pcl::io::savePCDFile("/tmp/rtabmap_cloud.pcd", *cloud);
+//        //pcl::io::savePLYFile("rtabmap_cloud.ply", *cloud); // to save in PLY format
+//    }
+//    else
+//    {
+//        printf("Saving rtabmap_cloud.pcd... failed! The cloud is empty.\n");
+//    }
+
+//    // Save trajectory
+//    printf("Saving rtabmap_trajectory.txt ...\n");
+//    if(optimizedPoses.size() && graph::exportPoses("rtabmap_trajectory.txt", 0, optimizedPoses, links))
+//    {
+//        printf("Saving rtabmap_trajectory.txt... done!\n");
+//    }
+//    else
+//    {
+//        printf("Saving rtabmap_trajectory.txt... failed!\n");
+//    }
 
     return 0;
 }

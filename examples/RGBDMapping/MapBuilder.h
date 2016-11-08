@@ -49,6 +49,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/filter.h>
 
+#define BOOST_NO_CXX11_SCOPED_ENUMS
+#include <boost/filesystem.hpp>
+#undef BOOST_NO_CXX11_SCOPED_ENUMS
+
 using namespace rtabmap;
 
 // This class receives RtabmapEvent and construct/update a 3D Map
@@ -57,7 +61,7 @@ class MapBuilder : public QWidget, public UEventsHandler
 	Q_OBJECT
 public:
 	//Camera ownership is not transferred!
-	MapBuilder(CameraThread * camera = 0) :
+        MapBuilder(CameraThread * camera = 0,std::string dir = "/tmp/kinect2") :
 		camera_(camera),
 		odometryCorrection_(Transform::getIdentity()),
 		processingStatistics_(false),
@@ -81,6 +85,19 @@ public:
 		this->addAction(pause);
 		pause->setShortcut(Qt::Key_Space);
 		connect(pause, SIGNAL(triggered()), this, SLOT(pauseDetection()));
+
+                dir_ = dir;
+                boost::filesystem::path path = dir_+"/pcd";
+                if ( exists( path ) )
+                {
+                    boost::filesystem::remove_all(path);
+                }
+                if (!boost::filesystem::create_directories(path))
+                {
+                    std::cout << "Cannot create .pcd file directory," << std::endl;
+                    std::cout << "POINTCLOUDS WON'T BE STOERED." << std::endl;
+                    savePCD_ = false;
+                }
 	}
 
 	virtual ~MapBuilder()
@@ -175,11 +192,12 @@ protected slots:
                 //============================
                 const std::map<int, Transform> & poses = stats.poses();
                 QMap<std::string, Transform> clouds = cloudViewer_->getAddedClouds();
+                pcl::PointCloud<pcl::PointXYZRGB>::Ptr wholeCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
                 for(std::map<int, Transform>::const_iterator iter = poses.begin(); iter!=poses.end(); ++iter)
                 {
                         if(!iter->second.isNull())
                         {
-                                std::string cloudName = uFormat("cloud%d", iter->first);
+                                std::string cloudName = uFormat("cloud%05d", iter->first);
 
                                 // 3d point cloud
                                 if(clouds.contains(cloudName))
@@ -196,6 +214,12 @@ protected slots:
                                                 std::cout << "UPDATE position: " << cloudName << std::endl;
                                         }
                                         cloudViewer_->setCloudVisibility(cloudName, true);
+
+                                        std::ofstream poseFile;
+                                        poseFile.open (dir_+"/pcd/tmp.pose");
+                                        poseFile << iter->second << std::endl;
+                                        poseFile.close();
+                                        boost::filesystem::rename(dir_+"/pcd/tmp.pose",dir_+"/pcd/"+cloudName+".pose");
                                 }
                                 else if(uContains(stats.getSignatures(), iter->first))
                                 {
@@ -217,12 +241,15 @@ protected slots:
                                                 std::vector<int> indices;
                                                 pcl::PointCloud<pcl::PointXYZRGB>::Ptr outputCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
                                                 pcl::removeNaNFromPointCloud(*cloud, *outputCloud, indices);
-                                                writer.write ("/tmp/"+cloudName+".pcd", *outputCloud, false);
+                                                writer.write(dir_+"/pcd/tmp.pcd", *outputCloud, false);
 
                                                 std::ofstream poseFile;
-                                                poseFile.open ("/tmp/"+cloudName+".pose");
+                                                poseFile.open (dir_+"/pcd/tmp.pose");
                                                 poseFile << iter->second << std::endl;
                                                 poseFile.close();
+
+                                                boost::filesystem::rename(dir_+"/pcd/tmp.pose",dir_+"/pcd/"+cloudName+".pose");
+                                                boost::filesystem::rename(dir_+"/pcd/tmp.pcd",dir_+"/pcd/"+cloudName+".pcd");
                                         }
                                         else
                                         {
@@ -301,6 +328,8 @@ protected:
 	Transform odometryCorrection_;
 	bool processingStatistics_;
 	bool lastOdometryProcessed_;
+        bool savePCD_ = true;
+        std::string dir_;
 };
 
 
