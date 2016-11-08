@@ -61,7 +61,7 @@ class MapBuilder : public QWidget, public UEventsHandler
 	Q_OBJECT
 public:
 	//Camera ownership is not transferred!
-        MapBuilder(CameraThread * camera = 0,std::string dir = "/tmp/kinect2") :
+        MapBuilder(CameraThread * camera = 0,std::string dir = "/tmp/kinect2",bool binary = true) :
 		camera_(camera),
 		odometryCorrection_(Transform::getIdentity()),
 		processingStatistics_(false),
@@ -87,6 +87,7 @@ public:
 		connect(pause, SIGNAL(triggered()), this, SLOT(pauseDetection()));
 
                 dir_ = dir;
+                binary_ = binary;
                 boost::filesystem::path path = dir_+"/pcd";
                 if ( exists( path ) )
                 {
@@ -192,7 +193,6 @@ protected slots:
                 //============================
                 const std::map<int, Transform> & poses = stats.poses();
                 QMap<std::string, Transform> clouds = cloudViewer_->getAddedClouds();
-                pcl::PointCloud<pcl::PointXYZRGB>::Ptr wholeCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
                 for(std::map<int, Transform>::const_iterator iter = poses.begin(); iter!=poses.end(); ++iter)
                 {
                         if(!iter->second.isNull())
@@ -215,11 +215,26 @@ protected slots:
                                         }
                                         cloudViewer_->setCloudVisibility(cloudName, true);
 
-                                        std::ofstream poseFile;
-                                        poseFile.open (dir_+"/pcd/tmp.pose");
-                                        poseFile << iter->second << std::endl;
-                                        poseFile.close();
-                                        boost::filesystem::rename(dir_+"/pcd/tmp.pose",dir_+"/pcd/"+cloudName+".pose");
+                                        if(binary_)
+                                        {
+                                            Transform test = iter->second;
+                                            std::ofstream poseFileBinary;
+                                            poseFileBinary.open (dir_+"/pcd/tmp.trb", std::ios::out | std::ios::binary);
+                                            poseFileBinary.write( reinterpret_cast<const char*>( test.data() ), sizeof( float )*test.size());
+                                            poseFileBinary.close();
+
+                                            boost::filesystem::rename(dir_+"/pcd/tmp.trb",dir_+"/pcd/"+cloudName+".trb");
+                                        }
+                                        else
+                                        {
+                                            std::ofstream poseFile;
+                                            poseFile.open (dir_+"/pcd/tmp.trt");
+                                            poseFile << iter->second << std::endl;
+                                            poseFile.close();
+
+                                            boost::filesystem::rename(dir_+"/pcd/tmp.trt",dir_+"/pcd/"+cloudName+".trt");
+                                        }
+
                                 }
                                 else if(uContains(stats.getSignatures(), iter->first))
                                 {
@@ -241,15 +256,35 @@ protected slots:
                                                 std::vector<int> indices;
                                                 pcl::PointCloud<pcl::PointXYZRGB>::Ptr outputCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
                                                 pcl::removeNaNFromPointCloud(*cloud, *outputCloud, indices);
-                                                writer.write(dir_+"/pcd/tmp.pcd", *outputCloud, false);
+                                                writer.write(dir_+"/pcd/tmp.pcd", *outputCloud, binary_);
 
-                                                std::ofstream poseFile;
-                                                poseFile.open (dir_+"/pcd/tmp.pose");
-                                                poseFile << iter->second << std::endl;
-                                                poseFile.close();
+                                                if(binary_)
+                                                {
+                                                    Transform test = iter->second;
+                                                    std::ofstream poseFileBinary;
+                                                    poseFileBinary.open (dir_+"/pcd/tmp.trb", std::ios::out | std::ios::binary);
+                                                    poseFileBinary.write( reinterpret_cast<const char*>( test.data() ), sizeof( float )*test.size());
+                                                    poseFileBinary.close();
 
-                                                boost::filesystem::rename(dir_+"/pcd/tmp.pose",dir_+"/pcd/"+cloudName+".pose");
+                                                    boost::filesystem::rename(dir_+"/pcd/tmp.trb",dir_+"/pcd/"+cloudName+".trb");
+                                                }
+                                                else
+                                                {
+                                                    std::ofstream poseFile;
+                                                    poseFile.open (dir_+"/pcd/tmp.trt");
+                                                    poseFile << iter->second << std::endl;
+                                                    poseFile.close();
+
+                                                    boost::filesystem::rename(dir_+"/pcd/tmp.trt",dir_+"/pcd/"+cloudName+".trt");
+                                                }
                                                 boost::filesystem::rename(dir_+"/pcd/tmp.pcd",dir_+"/pcd/"+cloudName+".pcd");
+
+//                                                cv::FileStorage file1(dir_+"/pcd/"+cloudName+".xml", cv::FileStorage::WRITE);
+//                                                // Write to file!
+//                                                file1 << "transform" << test.dataMatrix();
+//                                                cv::FileStorage file2(dir_+"/pcd/"+cloudName+".yml", cv::FileStorage::WRITE);
+//                                                // Write to file!
+//                                                file2 << "transform" << test.dataMatrix();
                                         }
                                         else
                                         {
@@ -330,6 +365,7 @@ protected:
 	bool lastOdometryProcessed_;
         bool savePCD_ = true;
         std::string dir_;
+        bool binary_;
 };
 
 

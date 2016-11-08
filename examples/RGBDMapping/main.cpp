@@ -52,6 +52,7 @@ int main(int argc, char **argv)
     std::string depth_image = "";
     std::string calibration = "";
     float freq = 0;
+    bool binary = true;
 
     for(std::string arg : args)
     {
@@ -86,6 +87,10 @@ int main(int argc, char **argv)
             calibration = arg.substr(12,arg.length()-12);
             std::cout << "Calibration Path:   " << calibration << ";" << std::endl;
         }
+        else if(arg.substr(0,9) == "textfiles")
+        {
+            binary = false;
+        }
     }
 
     if(help)
@@ -108,6 +113,8 @@ int main(int argc, char **argv)
         std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
         std::cout << "     Calibration .yaml file." << std::endl;
         std::cout << "     If not set, default is created in dir and used." << std::endl;
+        std::cout << "-textfiles" << std::endl;
+        std::cout << "     Store data in textfiles, default is binary form." << std::endl;
         std::cout << " --------------------------------------" << std::endl;
         std::cout << " -help" << std::endl;
         std::cout << "     Print this help." << std::endl;
@@ -209,7 +216,7 @@ int main(int argc, char **argv)
     // GUI stuff, there the handler will receive RtabmapEvent and construct the map
     // We give it the camera so the GUI can pause/resume the camera
     QApplication app(argc, argv);
-    MapBuilder mapBuilder(&cameraThread,dir);
+    MapBuilder mapBuilder(&cameraThread,dir,binary);
 
     // Create an odometry thread to process camera events, it will send OdometryEvent.
     OdometryThread odomThread(new OdometryF2M());
