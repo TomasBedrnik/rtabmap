@@ -87,7 +87,7 @@ int main(int argc, char **argv)
             calibration = arg.substr(12,arg.length()-12);
             std::cout << "Calibration Path:   " << calibration << ";" << std::endl;
         }
-        else if(arg.substr(0,9) == "textfiles")
+        else if(arg.substr(0,4) == "text")
         {
             binary = false;
         }
@@ -113,7 +113,7 @@ int main(int argc, char **argv)
         std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
         std::cout << "     Calibration .yaml file." << std::endl;
         std::cout << "     If not set, default is created in dir and used." << std::endl;
-        std::cout << "-textfiles" << std::endl;
+        std::cout << "-text" << std::endl;
         std::cout << "     Store data in textfiles, default is binary form." << std::endl;
         std::cout << " --------------------------------------" << std::endl;
         std::cout << " -help" << std::endl;
