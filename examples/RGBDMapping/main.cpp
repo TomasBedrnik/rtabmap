@@ -41,6 +41,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "MapBuilder.h"
 
+#define BOOST_NO_CXX11_SCOPED_ENUMS
+#include <boost/filesystem.hpp>
+#undef BOOST_NO_CXX11_SCOPED_ENUMS
+
 using namespace rtabmap;
 int main(int argc, char **argv)
 {
@@ -48,11 +52,12 @@ int main(int argc, char **argv)
     args.erase(args.begin());
     bool help = false;
     std::string dir = "";
-    std::string rgb_image = "";
-    std::string depth_image = "";
+    std::string rgb_path = "";
+    std::string depth_path = "";
     std::string calibration = "";
     float freq = 0;
     bool binary = true;
+    bool dir_paths = false;
 
     for(std::string arg : args)
     {
@@ -72,15 +77,15 @@ int main(int argc, char **argv)
             freq = std::stof(arg.substr(2,arg.length()-2));
             std::cout << "Frequency:   " << freq << "Hz;" << std::endl;
         }
-        else if(arg.substr(0,9) == "rgb_image")
+        else if(arg.substr(0,3) == "rgb")
         {
-            rgb_image = arg.substr(10,arg.length()-10);
-            std::cout << "RGB Image Path:   " << rgb_image << ";" << std::endl;
+            rgb_path = arg.substr(4,arg.length()-4);
+            std::cout << "RGB Image Path:   " << rgb_path << ";" << std::endl;
         }
-        else if(arg.substr(0,11) == "depth_image")
+        else if(arg.substr(0,5) == "depth")
         {
-            depth_image = arg.substr(12,arg.length()-12);
-            std::cout << "Depth Image Path:   " << depth_image << ";" << std::endl;
+            depth_path = arg.substr(6,arg.length()-6);
+            std::cout << "Depth Image Path:   " << depth_path << ";" << std::endl;
         }
         else if(arg.substr(0,11) == "calibration")
         {
@@ -104,10 +109,10 @@ int main(int argc, char **argv)
         std::cout << "-f            -f=60" << std::endl;
         std::cout << "     Capture frequency in Hz." << std::endl;
         std::cout << "     If not set or set to 0, data is read as fast as possible." << std::endl;
-        std::cout << "-rgb_image    -rgb_image=/tmp/rgb.png" << std::endl;
+        std::cout << "-rgb          -rgb=/tmp/rgb.png" << std::endl;
         std::cout << "     RGB image mapped to depth." << std::endl;
         std::cout << "     If not set dir/rgb/rgb.png is used." << std::endl;
-        std::cout << "-depth_image    -depth_image=/tmp/depth.png" << std::endl;
+        std::cout << "-depth        -depth=/tmp/depth.png" << std::endl;
         std::cout << "     Depth image or xml file." << std::endl;
         std::cout << "     If not set dir/depth/depth.png is used." << std::endl;
         std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
@@ -123,10 +128,27 @@ int main(int argc, char **argv)
 
     if(dir == "")
         dir = "/tmp/kinect2";
-    if(depth_image == "")
-        depth_image = dir+"/depth/depth.png";
-    if(rgb_image == "")
-        rgb_image = dir+"/rgb/rgb.png";
+    if(depth_path == "")
+        depth_path = dir+"/depth/depth.png";
+    if(rgb_path == "")
+        rgb_path = dir+"/rgb/rgb.png";
+
+    boost::filesystem::path p1 = depth_path;
+    boost::filesystem::path p2 = rgb_path;
+    if(boost::filesystem::is_directory(p1) && boost::filesystem::is_directory(p2))
+    {
+        std::cout << "Sources are directories." << std::endl;
+        dir_paths = true;
+    }
+    else if(boost::filesystem::is_regular_file(p1) && boost::filesystem::is_regular_file(p2))
+    {
+        std::cout << "Sources are images." << std::endl;
+    }
+    else
+    {
+        std::cout << "Not supported source files/dirs." << std::endl;
+        return -1;
+    }
 
     std::string calibration_path = "";
     std::string calibration_name = "";
@@ -203,7 +225,10 @@ int main(int argc, char **argv)
     //camera = new CameraRGBDGrabber("/home/beda/data/skola/_Oulu/kinectData/rgb/","/home/beda/data/skola/_Oulu/kinectData/depth/",1.0,0.0, opticalRotation);
     //camera = new CameraRGBDGrabber("/tmp/kinect2/rgb/rgb.png","/tmp/kinect2/depth/depth.png",1.0,0.0, opticalRotation);
     //camera = new CameraRGBDGrabber("/tmp/kinect2/rgb/rgb.png","/tmp/kinect2/depth_mat/depth_mat.xml",1.0,0.0, opticalRotation);
-    camera = new CameraRGBDGrabber(rgb_image,depth_image,1.0,freq, opticalRotation);
+    if(dir_paths)
+        camera = new CameraRGBDImages(rgb_path,depth_path,1.0,freq, opticalRotation);
+    else
+        camera = new CameraRGBDGrabber(rgb_path,depth_path,1.0,freq, opticalRotation);
 
     if(!camera->init(calibration_path,calibration_name))
     {
