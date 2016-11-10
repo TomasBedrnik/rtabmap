@@ -46,13 +46,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "rtabmap/core/OdometryEvent.h"
 #include "rtabmap/core/CameraThread.h"
 
+#ifndef Q_MOC_RUN // Mac OS X issue
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/filter.h>
+#endif
 
-#include <sys/stat.h>
-
-#include <unistd.h>
-#include <errno.h>
+#define BOOST_NO_CXX11_SCOPED_ENUMS
+#include <boost/filesystem.hpp>
+#undef BOOST_NO_CXX11_SCOPED_ENUMS
 
 using namespace rtabmap;
 
@@ -89,12 +90,12 @@ public:
 
                 dir_ = dir;
                 binary_ = binary;
-
-                if ( dir_exists(dir_+"/pcd") )
+                boost::filesystem::path path = dir_+"/pcd";
+                if ( exists( path ) )
                 {
-                    remove_all(dir_+"/pcd");
+                    boost::filesystem::remove_all(path);
                 }
-                if (!create_directories(dir_+"/pcd"))
+                if (!boost::filesystem::create_directories(path))
                 {
                     std::cout << "Cannot create .pcd file directory," << std::endl;
                     std::cout << "POINTCLOUDS WON'T BE STOERED." << std::endl;
@@ -242,7 +243,7 @@ protected slots:
                                                 writer.write(dir_+"/pcd/tmp.pcd", *outputCloud, binary_);
 
                                                 saveTransform(cloudName,iter->second);
-                                                my_rename(dir_+"/pcd/tmp.pcd",dir_+"/pcd/"+cloudName+".pcd");
+                                                boost::filesystem::rename(dir_+"/pcd/tmp.pcd",dir_+"/pcd/"+cloudName+".pcd");
 
 
                                         }
@@ -340,7 +341,7 @@ protected:
                     }
                 poseFileBinary.close();
 
-                my_rename(dir_+"/pcd/tmp.trb",dir_+"/pcd/"+cloudName+".trb");
+                boost::filesystem::rename(dir_+"/pcd/tmp.trb",dir_+"/pcd/"+cloudName+".trb");
             }
             else
             {
@@ -349,96 +350,8 @@ protected:
                 poseFile << t.toEigen4f() << std::endl;
                 poseFile.close();
 
-                my_rename(dir_+"/pcd/tmp.trt",dir_+"/pcd/"+cloudName+".trt");
+                boost::filesystem::rename(dir_+"/pcd/tmp.trt",dir_+"/pcd/"+cloudName+".trt");
             }
-        }
-        //TODO: Dirty hacks, but cannot use boost!
-        bool dir_exists(std::string dir)
-        {
-            struct stat buf;
-            if (stat(dir.c_str(), &buf) == 0 && S_ISDIR(buf.st_mode))
-            {
-                return true;
-            }
-            return false;
-        }
-        bool remove_all(std::string path)
-        {
-           const char *p = path.c_str();
-           DIR *d = opendir(p);
-           size_t path_len = strlen(p);
-           int r = -1;
-
-           if (d)
-           {
-              struct dirent *p;
-              r = 0;
-              while (!r && (p=readdir(d)))
-              {
-                  int r2 = -1;
-                  char *buf;
-                  size_t len;
-
-                  /* Skip the names "." and ".." as we don't want to recurse on them. */
-                  if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, ".."))
-                  {
-                     continue;
-                  }
-
-                  len = path_len + strlen(p->d_name) + 2;
-                  buf = (char*)malloc(len);
-
-                  if (buf)
-                  {
-                     struct stat statbuf;
-                     snprintf(buf, len, "%s/%s", p, p->d_name);
-                     if (!stat(buf, &statbuf))
-                     {
-                        if (S_ISDIR(statbuf.st_mode))
-                        {
-                           r2 = remove_all(std::string(buf));
-                        }
-                        else
-                        {
-                           r2 = unlink(buf);
-                        }
-                     }
-                     free(buf);
-                  }
-                  r = r2;
-              }
-              closedir(d);
-           }
-           if (!r)
-           {
-              r = rmdir(p);
-           }
-
-           return r;
-        }
-        bool create_directories(std::string path)
-        {
-            const char *p = path.c_str();
-            struct stat st;
-            int status = 0;
-
-            if (stat(p, &st) != 0)
-            {
-                /* Directory does not exist. EEXIST for race condition */
-                if (mkdir(p,S_IRWXU) != 0 && errno != EEXIST)
-                    status = -1;
-            }
-            else if (!S_ISDIR(st.st_mode))
-            {
-                errno = ENOTDIR;
-                status = -1;
-            }
-
-            return status;
-        }
-        bool my_rename(std::string oldname, std::string newname)
-        {
-            return rename(oldname.c_str(),newname.c_str()) == 0;
         }
 };
 
