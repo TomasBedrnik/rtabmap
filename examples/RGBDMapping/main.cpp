@@ -117,7 +117,7 @@ int main(int argc, char **argv)
         std::cout << "     If not set dir/depth/depth.png is used." << std::endl;
         std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
         std::cout << "     Calibration .yaml file." << std::endl;
-        std::cout << "     If not set, default is created in dir and used." << std::endl;
+        std::cout << "     If not set, dir /default.yaml is used." << std::endl;
         std::cout << "-text" << std::endl;
         std::cout << "     Store data in textfiles, default is binary form." << std::endl;
         std::cout << " --------------------------------------" << std::endl;
@@ -132,6 +132,8 @@ int main(int argc, char **argv)
         depth_path = dir+"/depth/depth.png";
     if(rgb_path == "")
         rgb_path = dir+"/rgb/rgb.png";
+    if(calibration == "")
+        calibration = dir+"/default.yaml";
 
     boost::filesystem::path p1 = depth_path;
     boost::filesystem::path p2 = rgb_path;
@@ -150,59 +152,19 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    std::string calibration_path = "";
-    std::string calibration_name = "";
-    if(calibration == "")
+    std::size_t found = calibration.find_last_of("/\\");
+    std::string calibration_path = calibration.substr(0,found);
+    std::string calibration_name = calibration.substr(found+1);
+    if(calibration_name.substr(calibration_name.length()-4,4) != "yaml")
     {
-        calibration_path = dir;
-        calibration_name = "default";
-        std::ofstream calibration_file;
-        calibration_file.open (calibration_path+"/"+calibration_name+".yaml");
-
-        calibration_file << "%YAML:1.0" << std::endl;
-        calibration_file << "camera_name: calib2" << std::endl;
-        calibration_file << "image_width: 512" << std::endl;
-        calibration_file << "image_height: 424" << std::endl;
-        calibration_file << "camera_matrix:" << std::endl;
-        calibration_file << "   rows: 3" << std::endl;
-        calibration_file << "   cols: 3" << std::endl;
-        calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02, 0.," << std::endl;
-        calibration_file << "       3.6097502114915272e+02, 1.7767928198595087e+02, 0., 0., 1. ]" << std::endl;
-        calibration_file << "distortion_coefficients:" << std::endl;
-        calibration_file << "   rows: 1" << std::endl;
-        calibration_file << "   cols: 5" << std::endl;
-        calibration_file << "   data: [ 1.1618214944736524e-01, -3.7391857743275664e-01," << std::endl;
-        calibration_file << "       -2.3108157640784072e-02, 4.0215076909925294e-03," << std::endl;
-        calibration_file << "       3.5294410947770366e-01 ]" << std::endl;
-        calibration_file << "distortion_model: plumb_bob" << std::endl;
-        calibration_file << "rectification_matrix:" << std::endl;
-        calibration_file << "   rows: 3" << std::endl;
-        calibration_file << "   cols: 3" << std::endl;
-        calibration_file << "   data: [ 1., 0., 0., 0., 1., 0., 0., 0., 1. ]" << std::endl;
-        calibration_file << "projection_matrix:" << std::endl;
-        calibration_file << "   rows: 3" << std::endl;
-        calibration_file << "   cols: 4" << std::endl;
-        calibration_file << "   data: [ 3.6110206777979778e+02, 0., 2.6372018528793006e+02," << std::endl;
-        calibration_file << "       4.0215076909925294e-03, 0., 3.6097502114915272e+02," << std::endl;
-        calibration_file << "       1.7767928198595087e+02, 0., 0., 0., 1., 1. ]" << std::endl;
-
-        calibration_file.close();
+        std::cout << "Calibration fine not found." << std::endl;
+        return -1;
     }
     else
     {
-          std::size_t found = calibration.find_last_of("/\\");
-          calibration_path = calibration.substr(0,found);
-          calibration_name = calibration.substr(found+1);
-          if(calibration_name.substr(calibration_name.length()-4,4) != "yaml")
-          {
-              std::cout << "Calibration fine not found." << std::endl;
-              return -1;
-          }
-          else
-          {
-              calibration_name = calibration_name.substr(0,calibration_name.length()-5);
-          }
+        calibration_name = calibration_name.substr(0,calibration_name.length()-5);
     }
+
 
     ULogger::setType(ULogger::kTypeConsole);
     ULogger::setLevel(ULogger::kWarning);
