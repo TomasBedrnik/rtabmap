@@ -49,7 +49,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ui_preferencesDialog.h"
 
 #include "rtabmap/core/Version.h"
-#include "rtabmap/core/Rtabmap.h"
 #include "rtabmap/core/Parameters.h"
 #include "rtabmap/core/Odometry.h"
 #include "rtabmap/core/OdometryThread.h"
@@ -185,6 +184,9 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	if(!Optimizer::isAvailable(Optimizer::kTypeG2O))
 	{
 		_ui->graphOptimization_type->setItemData(1, 0, Qt::UserRole - 1);
+		_ui->odom_f2m_bundleStrategy->setItemData(1, 0, Qt::UserRole - 1);
+		_ui->loopClosure_bundle->setItemData(1, 0, Qt::UserRole - 1);
+		_ui->groupBoxx_g2o->setEnabled(false);
 	}
 	if(!OptimizerG2O::isCSparseAvailable())
 	{
@@ -201,6 +203,11 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	if(!Optimizer::isAvailable(Optimizer::kTypeGTSAM))
 	{
 		_ui->graphOptimization_type->setItemData(2, 0, Qt::UserRole - 1);
+	}
+	if(!Optimizer::isAvailable(Optimizer::kTypeCVSBA))
+	{
+		_ui->odom_f2m_bundleStrategy->setItemData(2, 0, Qt::UserRole - 1);
+		_ui->loopClosure_bundle->setItemData(2, 0, Qt::UserRole - 1);
 	}
 #ifdef RTABMAP_VERTIGO
 	if(!Optimizer::isAvailable(Optimizer::kTypeG2O) && !Optimizer::isAvailable(Optimizer::kTypeGTSAM))
@@ -283,6 +290,8 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	connect(_ui->checkBox_notifyWhenNewGlobalPathIsReceived, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteGeneralPanel()));
 	connect(_ui->spinBox_odomQualityWarnThr, SIGNAL(valueChanged(int)), this, SLOT(makeObsoleteGeneralPanel()));
 	connect(_ui->checkBox_posteriorGraphView, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteGeneralPanel()));
+	connect(_ui->checkbox_odomDisabled, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteGeneralPanel()));
+	connect(_ui->checkbox_groundTruthAlign, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteGeneralPanel()));
 
 	// Cloud rendering panel
 	_3dRenderingShowClouds.resize(2);
@@ -397,6 +406,8 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	connect(_ui->checkBox_logger_printTime, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteLoggingPanel()));
 	connect(_ui->checkBox_logger_printThreadId, SIGNAL(stateChanged(int)), this, SLOT(makeObsoleteLoggingPanel()));
 	connect(_ui->comboBox_loggerType, SIGNAL(currentIndexChanged(int)), this, SLOT(makeObsoleteLoggingPanel()));
+	_ui->comboBox_loggerFilter->SetDisplayText("Select:");
+	connect(_ui->comboBox_loggerFilter, SIGNAL(itemChanged()), this, SLOT(makeObsoleteLoggingPanel()));
 
 	//Source panel
 	connect(_ui->general_doubleSpinBox_imgRate, SIGNAL(valueChanged(double)), this, SLOT(makeObsoleteSourcePanel()));
@@ -705,7 +716,6 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	_ui->spinBox_maxLocalLocationsRetrieved->setObjectName(Parameters::kRGBDMaxLocalRetrieved().c_str());
 
 	_ui->graphOptimization_type->setObjectName(Parameters::kOptimizerStrategy().c_str());
-	_ui->graphOptimization_slam2d->setObjectName(Parameters::kOptimizerSlam2D().c_str());
 	_ui->graphOptimization_iterations->setObjectName(Parameters::kOptimizerIterations().c_str());
 	_ui->graphOptimization_covarianceIgnored->setObjectName(Parameters::kOptimizerVarianceIgnored().c_str());
 	_ui->graphOptimization_fromGraphEnd->setObjectName(Parameters::kRGBDOptimizeFromGraphEnd().c_str());
@@ -715,7 +725,7 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 
 	_ui->comboBox_g2o_solver->setObjectName(Parameters::kg2oSolver().c_str());
 	_ui->comboBox_g2o_optimizer->setObjectName(Parameters::kg2oOptimizer().c_str());
-	_ui->doubleSpinBox_g2o_variance->setObjectName(Parameters::kg2oPixelVariance().c_str());
+	_ui->doubleSpinBox_g2o_pixelVariance->setObjectName(Parameters::kg2oPixelVariance().c_str());
 
 	_ui->graphPlan_goalReachedRadius->setObjectName(Parameters::kRGBDGoalReachedRadius().c_str());
 	_ui->graphPlan_goalsSavedInUserData->setObjectName(Parameters::kRGBDGoalsSavedInUserData().c_str());
@@ -772,6 +782,7 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	_ui->odom_flow_maxLevel_2->setObjectName(Parameters::kVisCorFlowMaxLevel().c_str());
 	_ui->odom_flow_iterations_2->setObjectName(Parameters::kVisCorFlowIterations().c_str());
 	_ui->odom_flow_eps_2->setObjectName(Parameters::kVisCorFlowEps().c_str());
+	_ui->loopClosure_bundle->setObjectName(Parameters::kVisBundleAdjustment().c_str());
 
 	//RegistrationIcp
 	_ui->globalDetection_icpMaxTranslation->setObjectName(Parameters::kIcpMaxTranslation().c_str());
@@ -832,8 +843,8 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	_ui->spinBox_odom_f2m_maxNewFeatures->setObjectName(Parameters::kOdomF2MMaxNewFeatures().c_str());
 	_ui->spinBox_odom_f2m_scanMaxSize->setObjectName(Parameters::kOdomF2MScanMaxSize().c_str());
 	_ui->doubleSpinBox_odom_f2m_scanRadius->setObjectName(Parameters::kOdomF2MScanSubtractRadius().c_str());
-	_ui->odom_fixedLocalMapPath->setObjectName(Parameters::kOdomF2MFixedMapPath().c_str());
-	connect(_ui->toolButton_odomBowFixedLocalMap, SIGNAL(clicked()), this, SLOT(changeOdomBowFixedLocalMapPath()));
+	_ui->odom_f2m_bundleStrategy->setObjectName(Parameters::kOdomF2MBundleAdjustment().c_str());
+	_ui->odom_f2m_bundleMaxFrames->setObjectName(Parameters::kOdomF2MBundleAdjustmentMaxFrames().c_str());
 
 	//Odometry Mono
 	_ui->doubleSpinBox_minFlow->setObjectName(Parameters::kOdomMonoInitMinFlow().c_str());
@@ -891,7 +902,6 @@ PreferencesDialog::PreferencesDialog(QWidget * parent) :
 	connect(_ui->doubleSpinBox_kp_roi1, SIGNAL(valueChanged(double)), this, SLOT(updateKpROI()));
 	connect(_ui->doubleSpinBox_kp_roi2, SIGNAL(valueChanged(double)), this, SLOT(updateKpROI()));
 	connect(_ui->doubleSpinBox_kp_roi3, SIGNAL(valueChanged(double)), this, SLOT(updateKpROI()));
-	connect(_ui->graphOptimization_type, SIGNAL(currentIndexChanged(int)), this, SLOT(updateG2oVisibility()));
 	connect(_ui->checkBox_useOdomFeatures, SIGNAL(toggled(bool)), this, SLOT(useOdomFeatures()));
 
 	//Create a model from the stacked widgets
@@ -1088,7 +1098,7 @@ void PreferencesDialog::setupSignals()
 			}
 			else if(groupBox)
 			{
-				connect(groupBox, SIGNAL(clicked(bool)), this, SLOT(addParameter(bool)));
+				connect(groupBox, SIGNAL(toggled(bool)), this, SLOT(addParameter(bool)));
 			}
 			else
 			{
@@ -1201,6 +1211,8 @@ void PreferencesDialog::resetSettings(QGroupBox * groupBox)
 		_ui->checkBox_imageHighestHypShown->setChecked(false);
 		_ui->spinBox_odomQualityWarnThr->setValue(50);
 		_ui->checkBox_posteriorGraphView->setChecked(true);
+		_ui->checkbox_odomDisabled->setChecked(false);
+		_ui->checkbox_groundTruthAlign->setChecked(true);
 	}
 	else if(groupBox->objectName() == _ui->groupBox_cloudRendering1->objectName())
 	{
@@ -1276,6 +1288,10 @@ void PreferencesDialog::resetSettings(QGroupBox * groupBox)
 		_ui->checkBox_logger_printTime->setChecked(true);
 		_ui->checkBox_logger_printThreadId->setChecked(false);
 		_ui->comboBox_loggerType->setCurrentIndex(1);
+		for(int i=0; i<_ui->comboBox_loggerFilter->count(); ++i)
+		{
+			_ui->comboBox_loggerFilter->setItemChecked(i, false);
+		}
 	}
 	else if(groupBox->objectName() == _ui->groupBox_source0->objectName())
 	{
@@ -1579,6 +1595,8 @@ void PreferencesDialog::readGuiSettings(const QString & filePath)
 	_ui->checkBox_notifyWhenNewGlobalPathIsReceived->setChecked(settings.value("notifyNewGlobalPath", _ui->checkBox_notifyWhenNewGlobalPathIsReceived->isChecked()).toBool());
 	_ui->spinBox_odomQualityWarnThr->setValue(settings.value("odomQualityThr", _ui->spinBox_odomQualityWarnThr->value()).toInt());
 	_ui->checkBox_posteriorGraphView->setChecked(settings.value("posteriorGraphView", _ui->checkBox_posteriorGraphView->isChecked()).toBool());
+	_ui->checkbox_odomDisabled->setChecked(settings.value("odomDisabled", _ui->checkbox_odomDisabled->isChecked()).toBool());
+	_ui->checkbox_groundTruthAlign->setChecked(settings.value("gtAlign", _ui->checkbox_groundTruthAlign->isChecked()).toBool());
 
 	for(int i=0; i<2; ++i)
 	{
@@ -1804,112 +1822,54 @@ bool PreferencesDialog::readCoreSettings(const QString & filePath)
 		QMessageBox::information(this, tr("INI file doesn't exist..."), tr("The configuration file \"%1\" does not exist, it will be created with default parameters.").arg(path));
 	}
 
-	QSettings settings(path, QSettings::IniFormat);
+	ParametersMap parameters;
+	Parameters::readINI(path.toStdString(), parameters);
 
-
-	settings.beginGroup("Core");
-
-	// Compare version in ini with the current RTAB-Map version
-	QStringList version = settings.value("Version", "").toString().split('.');
-	if(version.size() == 3)
-	{
-		if(!RTABMAP_VERSION_COMPARE(version[0].toInt(), version[1].toInt(), version[2].toInt()))
-		{
-			if(path.contains(".rtabmap"))
-			{
-				UWARN("Version in the config file \"%s\" is more recent (\"%s\") than "
-					   "current RTAB-Map version used (\"%s\"). The config file will be upgraded "
-					   "to new version.",
-					   path.toStdString().c_str(),
-					   settings.value("Version", "").toString().toStdString().c_str(),
-					   RTABMAP_VERSION);
-			}
-			else
-			{
-				UERROR("Version in the config file \"%s\" is more recent (\"%s\") than "
-					   "current RTAB-Map version used (\"%s\"). New parameters (if there are some) will "
-					   "be ignored.",
-					   path.toStdString().c_str(),
-					   settings.value("Version", "").toString().toStdString().c_str(),
-					   RTABMAP_VERSION);
-			}
-		}
-	}
-
-	QStringList keys = settings.allKeys();
-	// Get profile
-	const rtabmap::ParametersMap & parameters = Parameters::getDefaultParameters();
 	for(rtabmap::ParametersMap::const_iterator iter = parameters.begin(); iter!=parameters.end(); ++iter)
 	{
-		QString key(iter->first.c_str());
-		QString value = settings.value(key, "").toString();
-		if(value.isEmpty())
+		std::string value = iter->second;
+		if(iter->first.compare(Parameters::kRtabmapWorkingDirectory()) == 0)
 		{
-			// look for old parameter name
-			rtabmap::ParametersMap::const_iterator oldIter = Parameters::getBackwardCompatibilityMap().find(iter->first);
-			if(oldIter!=Parameters::getBackwardCompatibilityMap().end())
+			// The directory should exist if not the default one
+			if(!QDir(value.c_str()).exists() && value.compare(Parameters::createDefaultWorkingDirectory().c_str()) != 0)
 			{
-				value = settings.value(QString(oldIter->second.c_str()), "").toString();
-				if(!value.isEmpty())
+				if(QDir(this->getWorkingDirectory().toStdString().c_str()).exists())
 				{
-					UWARN("Parameter migration from \"%s\" to \"%s\" (value=%s).",
-							oldIter->second.c_str(), oldIter->first.c_str(), value.toStdString().c_str());
+					UWARN("Reading config: Not existing working directory \"%s\". Keeping old one (\"%s\").",
+						value.c_str(),
+						this->getWorkingDirectory().toStdString().c_str());
+					value = this->getWorkingDirectory().toStdString();
+				}
+				else
+				{
+					std::string defaultWorkingDir = Parameters::createDefaultWorkingDirectory();
+					UWARN("Reading config: Not existing working directory \"%s\". Using default one (\"%s\").",
+						value.c_str(),
+						defaultWorkingDir.c_str());
+					value = defaultWorkingDir;
 				}
 			}
 		}
-
-		if(!value.isEmpty())
-		{
-			if(key.toStdString().compare(Parameters::kRtabmapWorkingDirectory()) == 0)
-			{
-				// The directory should exist if not the default one
-				if(!QDir(value).exists() && value.compare(Parameters::createDefaultWorkingDirectory().c_str()) != 0)
-				{
-					if(QDir(this->getWorkingDirectory().toStdString().c_str()).exists())
-					{
-						UWARN("Reading config: Not existing working directory \"%s\". Keeping old one (\"%s\").",
-							value.toStdString().c_str(),
-							this->getWorkingDirectory().toStdString().c_str());
-						value = this->getWorkingDirectory();
-					}
-					else
-					{
-						UWARN("Reading config: Not existing working directory \"%s\". Using default one (\"%s\").",
-							value.toStdString().c_str(),
-							(*iter).second.c_str());
-						value = (*iter).second.c_str();
-					}
-				}
-			}
-			this->setParameter(key.toStdString(), value.toStdString());
-		}
-		else
-		{
-			// Add information about the working directory if not in the config file
-			if(key.toStdString().compare(Parameters::kRtabmapWorkingDirectory()) == 0)
-			{
-				if(!_initialized)
-				{
-					QMessageBox::information(this,
-							tr("Working directory"),
-							tr("RTAB-Map needs a working directory to put the database.\n\n"
-							   "By default, the directory \"%1\" is used.\n\n"
-							   "The working directory can be changed any time in the "
-							   "preferences menu.").arg(
-									   Parameters::createDefaultWorkingDirectory().c_str()));
-				}
-				this->setParameter(key.toStdString(), Parameters::createDefaultWorkingDirectory());
-				UDEBUG("key.toStdString()=%s", Parameters::createDefaultWorkingDirectory().c_str());
-			}
-			else
-			{
-				// Use the default value if the key doesn't exist yet
-				this->setParameter(key.toStdString(), (*iter).second);
-				UDEBUG("key.toStdString()=%s", key.toStdString().c_str());
-			}
-		}
+		this->setParameter(iter->first, value);
 	}
-	settings.endGroup(); // Core
+
+	// Add information about the working directory if not in the config file
+	if(parameters.find(Parameters::kRtabmapWorkingDirectory()) == parameters.end())
+	{
+		if(!_initialized)
+		{
+			QMessageBox::information(this,
+					tr("Working directory"),
+					tr("RTAB-Map needs a working directory to put the database.\n\n"
+					   "By default, the directory \"%1\" is used.\n\n"
+					   "The working directory can be changed any time in the "
+					   "preferences menu.").arg(
+							   Parameters::createDefaultWorkingDirectory().c_str()));
+		}
+		this->setParameter(Parameters::kRtabmapWorkingDirectory(), Parameters::createDefaultWorkingDirectory());
+		UDEBUG("key.toStdString()=%s", Parameters::createDefaultWorkingDirectory().c_str());
+	}
+
 	return true;
 }
 
@@ -2014,6 +1974,8 @@ void PreferencesDialog::writeGuiSettings(const QString & filePath) const
 	settings.setValue("notifyNewGlobalPath",  _ui->checkBox_notifyWhenNewGlobalPathIsReceived->isChecked());
 	settings.setValue("odomQualityThr",       _ui->spinBox_odomQualityWarnThr->value());
 	settings.setValue("posteriorGraphView",   _ui->checkBox_posteriorGraphView->isChecked());
+	settings.setValue("odomDisabled",         _ui->checkbox_odomDisabled->isChecked());
+	settings.setValue("gtAlign",              _ui->checkbox_groundTruthAlign->isChecked());
 
 	for(int i=0; i<2; ++i)
 	{
@@ -2232,65 +2194,8 @@ void PreferencesDialog::writeCoreSettings(const QString & filePath) const
 	{
 		path = filePath;
 	}
-	QSettings settings(path, QSettings::IniFormat);
-	settings.beginGroup("Core");
-	settings.remove("");
 
-	// save current RTAB-Map version
-	settings.setValue("Version", QString(RTABMAP_VERSION));
-
-	const rtabmap::ParametersMap & parameters = Parameters::getDefaultParameters();
-	for(rtabmap::ParametersMap::const_iterator iter=parameters.begin(); iter!=parameters.end(); ++iter)
-	{
-		QObject * obj = _ui->stackedWidget->findChild<QObject*>((*iter).first.c_str());
-		if(obj)
-		{
-			QSpinBox * spin = qobject_cast<QSpinBox *>(obj);
-			QDoubleSpinBox * doubleSpin = qobject_cast<QDoubleSpinBox *>(obj);
-			QComboBox * combo = qobject_cast<QComboBox *>(obj);
-			QCheckBox * check = qobject_cast<QCheckBox *>(obj);
-			QRadioButton * radio = qobject_cast<QRadioButton *>(obj);
-			QLineEdit * lineEdit = qobject_cast<QLineEdit *>(obj);
-			QGroupBox * groupBox = qobject_cast<QGroupBox *>(obj);
-			if(spin)
-			{
-				settings.setValue(obj->objectName(), spin->value());
-			}
-			else if(doubleSpin)
-			{
-				settings.setValue(obj->objectName(), doubleSpin->value());
-			}
-			else if(combo)
-			{
-				settings.setValue(obj->objectName(), combo->currentIndex());
-			}
-			else if(check)
-			{
-				settings.setValue(obj->objectName(), uBool2Str(check->isChecked()).c_str());
-			}
-			else if(radio)
-			{
-				settings.setValue(obj->objectName(), uBool2Str(radio->isChecked()).c_str());
-			}
-			else if(lineEdit)
-			{
-				settings.setValue(obj->objectName(), lineEdit->text());
-			}
-			else if(groupBox)
-			{
-				settings.setValue(obj->objectName(), uBool2Str(groupBox->isChecked()).c_str());
-			}
-			else
-			{
-				ULOGGER_WARN("QObject called %s can't be cast to a supported widget", (*iter).first.c_str());
-			}
-		}
-		else
-		{
-			ULOGGER_WARN("Can't find the related QObject for parameter %s", (*iter).first.c_str());
-		}
-	}
-	settings.endGroup(); // Core
+	Parameters::writeINI(path.toStdString(), this->getAllParameters());
 }
 
 bool PreferencesDialog::validateForm()
@@ -2367,6 +2272,45 @@ bool PreferencesDialog::validateForm()
 					   "with GTSAM. TORO is set instead for graph optimization strategy."));
 			_ui->graphOptimization_type->setCurrentIndex(Optimizer::kTypeTORO);
 		}
+	}
+
+	// Registration bundle adjustment strategy
+	if(_ui->loopClosure_bundle->currentIndex() == 1 && !Optimizer::isAvailable(Optimizer::kTypeG2O))
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Selected visual registration bundle adjustment optimization strategy (g2o) is not available. RTAB-Map is not built "
+				   "with g2o. Bundle adjustment is disabled."));
+		_ui->loopClosure_bundle->setCurrentIndex(0);
+	}
+	if(_ui->loopClosure_bundle->currentIndex() == 2 && !Optimizer::isAvailable(Optimizer::kTypeCVSBA))
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Selected visual registration bundle adjustment optimization strategy (cvsba) is not available. RTAB-Map is not built "
+				   "with cvsba. Bundle adjustment is disabled."));
+		_ui->loopClosure_bundle->setCurrentIndex(0);
+	}
+
+	// Local bundle adjustment strategy for odometry F2M
+	if(_ui->odom_f2m_bundleStrategy->currentIndex() == 1 && !Optimizer::isAvailable(Optimizer::kTypeG2O))
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Selected odometry local bundle adjustment optimization strategy (g2o) is not available. RTAB-Map is not built "
+				   "with g2o. Bundle adjustment is disabled."));
+		_ui->odom_f2m_bundleStrategy->setCurrentIndex(0);
+	}
+	if(_ui->odom_f2m_bundleStrategy->currentIndex() == 2 && !Optimizer::isAvailable(Optimizer::kTypeCVSBA))
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Selected odometry local bundle adjustment optimization strategy (cvsba) is not available. RTAB-Map is not built "
+				   "with cvsba. Bundle adjustment is disabled."));
+		_ui->odom_f2m_bundleStrategy->setCurrentIndex(0);
+	}
+	if(_ui->odom_f2m_bundleStrategy->currentIndex() > 0 && _ui->loopClosure_correspondencesType->currentIndex() == 1)
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Odometry local bundle adjustment optimization cannot be used at the same time than Optical Flow correspondences "
+					"strategy (see Visual Registration panel). Bundle adjustment is disabled."));
+		_ui->odom_f2m_bundleStrategy->setCurrentIndex(0);
 	}
 
 	// verify that Robust and Reject threshold are not set at the same time
@@ -2449,6 +2393,15 @@ bool PreferencesDialog::validateForm()
 		_ui->fastThresholdMin->setValue(_ui->fastThreshold->value());
 	}
 
+	if(_ui->checkbox_odomDisabled->isChecked() &&
+		_ui->general_checkBox_SLAM_mode->isChecked() &&
+		_ui->general_checkBox_activateRGBD->isChecked())
+	{
+		QMessageBox::warning(this, tr("Parameter warning"),
+				tr("Odometry is disabled but incremental RGB-D SLAM is activated! Re-enabling odometry."));
+		_ui->checkbox_odomDisabled->setChecked(false);
+	}
+
 	return true;
 }
 
@@ -2487,6 +2440,24 @@ void PreferencesDialog::showEvent ( QShowEvent * event )
 
 		this->setWindowTitle(tr("Preferences"));
 	}
+
+	// setup logger filter
+	std::map<std::string, unsigned long> threads = ULogger::getRegisteredThreads();
+	std::vector<std::string> threadsChecked = this->getGeneralLoggerThreads();
+	std::set<std::string> threadsCheckedSet(threadsChecked.begin(), threadsChecked.end());
+	_ui->comboBox_loggerFilter->clear();
+	for(std::map<std::string, unsigned long>::iterator iter=threads.begin(); iter!=threads.end(); ++iter)
+	{
+		if(threadsCheckedSet.find(iter->first.c_str()) != threadsCheckedSet.end())
+		{
+			_ui->comboBox_loggerFilter->addItem(QString(iter->first.c_str()), QVariant(true));
+		}
+		else
+		{
+			_ui->comboBox_loggerFilter->addItem(QString(iter->first.c_str()), QVariant(false));
+		}
+	}
+
 	this->readSettingsBegin();
 }
 
@@ -2742,6 +2713,17 @@ rtabmap::ParametersMap PreferencesDialog::getAllParameters() const
 	return parameters;
 }
 
+std::string PreferencesDialog::getParameter(const std::string & key) const
+{
+	if(_modifiedParameters.find(key) != _modifiedParameters.end())
+	{
+		return _modifiedParameters.at(key);
+	}
+
+	UASSERT(_parameters.find(key) != _parameters.end());
+	return _parameters.at(key);
+}
+
 void PreferencesDialog::updateParameters(const ParametersMap & parameters)
 {
 	if(parameters.size())
@@ -2815,7 +2797,6 @@ void PreferencesDialog::selectSourceDatabase()
 		_ui->source_database_lineEdit_path->setText(paths.size()==1?paths.front():paths.join(";"));
 		_ui->source_spinBox_databaseStartPos->setValue(0);
 		_ui->source_spinBox_database_cameraIndex->setValue(-1);
-		_ui->source_checkBox_useDbStamps->setChecked(true);
 	}
 }
 
@@ -3625,11 +3606,6 @@ void PreferencesDialog::updateKpROI()
 	_ui->lineEdit_kp_roi->setText(strings.join(" "));
 }
 
-void PreferencesDialog::updateG2oVisibility()
-{
-	_ui->groupBox_g2o->setVisible(_ui->graphOptimization_type->currentIndex() == 1);
-}
-
 void PreferencesDialog::updateStereoDisparityVisibility()
 {
 	Src driver = this->getSourceDriver();
@@ -3687,23 +3663,6 @@ void PreferencesDialog::changeDictionaryPath()
 	if(!path.isEmpty())
 	{
 		_ui->lineEdit_dictionaryPath->setText(path);
-	}
-}
-
-void PreferencesDialog::changeOdomBowFixedLocalMapPath()
-{
-	QString path;
-	if(_ui->odom_fixedLocalMapPath->text().isEmpty())
-	{
-		path = QFileDialog::getOpenFileName(this, tr("Database"), this->getWorkingDirectory(), tr("RTAB-Map database files (*.db)"));
-	}
-	else
-	{
-		path = QFileDialog::getOpenFileName(this, tr("Database"), _ui->odom_fixedLocalMapPath->text(), tr("RTAB-Map database files (*.db)"));
-	}
-	if(!path.isEmpty())
-	{
-		_ui->odom_fixedLocalMapPath->setText(path);
 	}
 }
 
@@ -3776,6 +3735,18 @@ bool PreferencesDialog::getGeneralLoggerPrintThreadId() const
 {
 	return _ui->checkBox_logger_printThreadId->isChecked();
 }
+std::vector<std::string> PreferencesDialog::getGeneralLoggerThreads() const
+{
+	std::vector<std::string> threads;
+	for(int i=0; i<_ui->comboBox_loggerFilter->count(); ++i)
+	{
+		if(_ui->comboBox_loggerFilter->itemData(i).toBool())
+		{
+			threads.push_back(_ui->comboBox_loggerFilter->itemText(i).toStdString());
+		}
+	}
+	return threads;
+}
 bool PreferencesDialog::isVerticalLayoutUsed() const
 {
 	return _ui->checkBox_verticalLayoutUsed->isChecked();
@@ -3811,6 +3782,14 @@ int PreferencesDialog::getOdomQualityWarnThr() const
 bool PreferencesDialog::isPosteriorGraphView() const
 {
 	return _ui->checkBox_posteriorGraphView->isChecked();
+}
+bool PreferencesDialog::isOdomDisabled() const
+{
+	return _ui->checkbox_odomDisabled->isChecked();
+}
+bool PreferencesDialog::isGroundTruthAligned() const
+{
+	return _ui->checkbox_groundTruthAlign->isChecked();
 }
 
 bool PreferencesDialog::isCloudsShown(int index) const

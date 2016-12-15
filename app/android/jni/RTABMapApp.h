@@ -52,7 +52,7 @@ class RTABMapApp : public UEventsHandler {
 
   void onCreate(JNIEnv* env, jobject caller_activity);
 
-  void openDatabase(const std::string & databasePath);
+  void openDatabase(const std::string & databasePath = "");
 
   bool onTangoServiceConnected(JNIEnv* env, jobject iBinder);
 
@@ -122,14 +122,16 @@ class RTABMapApp : public UEventsHandler {
   void setGridVisible(bool visible);
   void setAutoExposure(bool enabled);
   void setFullResolution(bool enabled);
+  void setAppendMode(bool enabled);
   void setDataRecorderMode(bool enabled);
   void setMaxCloudDepth(float value);
+  void setMeshDecimation(int value);
   void setMeshAngleTolerance(float value);
   void setMeshTriangleSize(int value);
   int setMappingParameter(const std::string & key, const std::string & value);
 
   void resetMapping();
-  void save();
+  void save(const std::string & databasePath);
   bool exportMesh(const std::string & filePath);
   int postProcessing(int approach);
 
@@ -154,7 +156,9 @@ class RTABMapApp : public UEventsHandler {
   bool trajectoryMode_;
   bool autoExposure_;
   bool fullResolution_;
+  bool appendMode_;
   float maxCloudDepth_;
+  int meshDecimation_;
   int meshTrianglePix_;
   float meshAngleToleranceDeg_;
 

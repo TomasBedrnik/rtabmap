@@ -61,13 +61,20 @@ public:
 	bool process(const cv::Mat & image, int id=0); // for convenience, an id is automatically generated if id=0
 	bool process(
 			const SensorData & data,
-			const Transform & odomPose,
+			Transform odomPose,
 			const cv::Mat & covariance = cv::Mat::eye(6,6,CV_64FC1)); // for convenience
 
 	void init(const ParametersMap & parameters, const std::string & databasePath = "");
 	void init(const std::string & configFile = "", const std::string & databasePath = "");
 
-	void close(bool databaseSaved = true);
+	/**
+	 * Close rtabmap. This will delete rtabmap object if set.
+	 * @param databaseSaved true=database saved, false=database discarded.
+	 * @param databasePath output database file name, ignored if
+	 *                     Db/Sqlite3InMemory=false (opened database is
+	 *                     then overwritten).
+	 */
+	void close(bool databaseSaved = true, const std::string & ouputDatabasePath = "");
 
 	const std::string & getWorkingDir() const {return _wDir;}
 	bool isRGBDMode() const { return _rgbdSlamMode; }
@@ -245,6 +252,7 @@ private:
 	std::map<int, Transform> _optimizedPoses;
 	std::multimap<int, Link> _constraints;
 	Transform _mapCorrection;
+	Transform _mapCorrectionBackup; // used in localization mode when odom is lost
 	Transform _lastLocalizationPose; // Corrected odometry pose. In mapping mode, this corresponds to last pose return by getLocalOptimizedPoses().
 	int _lastLocalizationNodeId; // for localization mode
 

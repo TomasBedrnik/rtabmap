@@ -314,24 +314,29 @@ bool DBDriverSqlite3::connectDatabaseQuery(const std::string & url, bool overwri
 	// Open a database connection
 	_ppDb = 0;
 
-	if(url.empty())
-	{
-		UERROR("url is empty...");
-		return false;
-	}
-
 	int rc = SQLITE_OK;
-	bool dbFileExist = UFile::exists(url.c_str());
-	if(dbFileExist && overwritten)
+	bool dbFileExist = false;
+	if(!url.empty())
 	{
-		UINFO("Deleting database %s...", url.c_str());
-		UASSERT(UFile::erase(url.c_str()) == 0);
-		dbFileExist = false;
+		dbFileExist = UFile::exists(url.c_str());
+		if(dbFileExist && overwritten)
+		{
+			UINFO("Deleting database %s...", url.c_str());
+			UASSERT(UFile::erase(url.c_str()) == 0);
+			dbFileExist = false;
+		}
 	}
 
-	if(_dbInMemory)
+	if(_dbInMemory || url.empty())
 	{
-		ULOGGER_INFO("Using database \"%s\" in the memory.", url.c_str());
+		if(!url.empty())
+		{
+			ULOGGER_INFO("Using database \"%s\" in the memory.", url.c_str());
+		}
+		else
+		{
+			ULOGGER_INFO("Using empty database in the memory.");
+		}
 		rc = sqlite3_open_v2(":memory:", &_ppDb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0);
 	}
 	else
@@ -364,7 +369,10 @@ bool DBDriverSqlite3::connectDatabaseQuery(const std::string & url, bool overwri
 
 	if(!dbFileExist)
 	{
-		ULOGGER_INFO("Database \"%s\" doesn't exist, creating a new one...", url.c_str());
+		if(!url.empty())
+		{
+			ULOGGER_INFO("Database \"%s\" doesn't exist, creating a new one...", url.c_str());
+		}
 		// Create the database
 		std::string schema = DATABASESCHEMA_SQL;
 		schema = uHex2Str(schema);
@@ -390,7 +398,7 @@ bool DBDriverSqlite3::connectDatabaseQuery(const std::string & url, bool overwri
 
 	return true;
 }
-void DBDriverSqlite3::disconnectDatabaseQuery(bool save)
+void DBDriverSqlite3::disconnectDatabaseQuery(bool save, const std::string & outputUrl)
 {
 	UDEBUG("");
 	if(_ppDb)
@@ -407,14 +415,34 @@ void DBDriverSqlite3::disconnectDatabaseQuery(bool save)
 			}
 		}
 
-		if(save && _dbInMemory)
+		if(save && (_dbInMemory || this->getUrl().empty()))
 		{
 			UTimer timer;
 			timer.start();
-			UINFO("Saving database to %s ...",  this->getUrl().c_str());
-			rc = loadOrSaveDb(_ppDb, this->getUrl(), 1); // Save memory to file
-			UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
-			ULOGGER_DEBUG("Saving DB time = %fs", timer.ticks());
+			std::string outputFile = this->getUrl();
+			if(!outputUrl.empty())
+			{
+				outputFile = outputUrl;
+			}
+			if(outputFile.empty())
+			{
+				UERROR("Database was initialized with an empty url (in memory). To save it "
+						"the output url should not be empty. The database is thus closed without being saved!");
+			}
+			else
+			{
+				UINFO("Saving database to %s ...",  outputFile.c_str());
+				rc = loadOrSaveDb(_ppDb, outputFile, 1); // Save memory to file
+				UASSERT_MSG(rc == SQLITE_OK, uFormat("DB error (%s): %s", _version.c_str(), sqlite3_errmsg(_ppDb)).c_str());
+				ULOGGER_DEBUG("Saving DB time = %fs", timer.ticks());
+			}
+		}
+		else if(save && !outputUrl.empty() && outputUrl.compare(this->getUrl()) != 0)
+		{
+			UWARN("Output database path (%s) is different than the opened database "
+					"path (%s). Exporting to a different path is only available "
+					"when database is in memory (%s=true). Opened database path is overwritten.",
+					outputUrl.c_str(), this->getUrl().c_str(), Parameters::kDbSqlite3InMemory().c_str());
 		}
 
 		// Then close (delete) the database connection
@@ -1062,6 +1090,7 @@ void DBDriverSqlite3::loadNodeDataQuery(std::list<Signature *> & signatures, boo
 					}
 					else if(uStrNumCmp(_version, "0.7.0") >= 0)
 					{
+						UDEBUG("Loading calibration version >= 0.7.0");
 						double fx = sqlite3_column_double(ppStmt, index++);
 						double fyOrBaseline = sqlite3_column_double(ppStmt, index++);
 						double cx = sqlite3_column_double(ppStmt, index++);
@@ -1078,6 +1107,7 @@ void DBDriverSqlite3::loadNodeDataQuery(std::list<Signature *> & signatures, boo
 					}
 					else
 					{
+						UDEBUG("Loading calibration version < 0.7.0");
 						float depthConstant = sqlite3_column_double(ppStmt, index++);
 						float fx = 1.0f/depthConstant;
 						float fy = 1.0f/depthConstant;
@@ -1269,7 +1299,7 @@ bool DBDriverSqlite3::getCalibrationQuery(
 
 		const void * data = 0;
 		int dataSize = 0;
-		Transform localTransform;
+		Transform localTransform = Transform::getIdentity();
 
 		// Process the result if one
 		rc = sqlite3_step(ppStmt);
@@ -1279,6 +1309,16 @@ bool DBDriverSqlite3::getCalibrationQuery(
 			int index = 0;
 
 			// calibration
+			if(uStrNumCmp(_version, "0.10.0") < 0)
+			{
+				data = sqlite3_column_blob(ppStmt, index); // local transform
+				dataSize = sqlite3_column_bytes(ppStmt, index++);
+				if((unsigned int)dataSize == localTransform.size()*sizeof(float) && data)
+				{
+					memcpy(localTransform.data(), data, dataSize);
+				}
+			}
+
 			if(uStrNumCmp(_version, "0.10.0") >= 0)
 			{
 				data = sqlite3_column_blob(ppStmt, index);
@@ -1351,10 +1391,12 @@ bool DBDriverSqlite3::getCalibrationQuery(
 			}
 			else if(uStrNumCmp(_version, "0.7.0") >= 0)
 			{
+				UDEBUG("Loading calibration version >= 0.7.0");
 				double fx = sqlite3_column_double(ppStmt, index++);
 				double fyOrBaseline = sqlite3_column_double(ppStmt, index++);
 				double cx = sqlite3_column_double(ppStmt, index++);
 				double cy = sqlite3_column_double(ppStmt, index++);
+				UDEBUG("fx=%f fyOrBaseline=%f cx=%f cy=%f", fx, fyOrBaseline, cx, cy);
 				if(fyOrBaseline < 1.0)
 				{
 					//it is a baseline
@@ -1367,6 +1409,7 @@ bool DBDriverSqlite3::getCalibrationQuery(
 			}
 			else
 			{
+				UDEBUG("Loading calibration version < 0.7.0");
 				float depthConstant = sqlite3_column_double(ppStmt, index++);
 				float fx = 1.0f/depthConstant;
 				float fy = 1.0f/depthConstant;

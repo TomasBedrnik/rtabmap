@@ -130,6 +130,7 @@ public:
 	QString loadCustomConfig(const QString & section, const QString & key);
 
 	rtabmap::ParametersMap getAllParameters() const;
+	std::string getParameter(const std::string & key) const;
 	void updateParameters(const ParametersMap & parameters);
 
 	//General panel
@@ -139,6 +140,7 @@ public:
 	int getGeneralLoggerType() const;
 	bool getGeneralLoggerPrintTime() const;
 	bool getGeneralLoggerPrintThreadId() const;
+	std::vector<std::string> getGeneralLoggerThreads() const;
 	bool isVerticalLayoutUsed() const;
 	bool imageRejectedShown() const;
 	bool imageHighestHypShown() const;
@@ -148,6 +150,8 @@ public:
 	bool notifyWhenNewGlobalPathIsReceived() const;
 	int getOdomQualityWarnThr() const;
 	bool isPosteriorGraphView() const;
+	bool isOdomDisabled() const;
+	bool isGroundTruthAligned() const;
 
 	bool isGraphsShown() const;
 	bool isLabelsShown() const;
@@ -288,12 +292,10 @@ private slots:
 	void addParameter(const QString & value);
 	void updatePredictionPlot();
 	void updateKpROI();
-	void updateG2oVisibility();
 	void updateStereoDisparityVisibility();
 	void useOdomFeatures();
 	void changeWorkingDirectory();
 	void changeDictionaryPath();
-	void changeOdomBowFixedLocalMapPath();
 	void readSettingsEnd();
 	void setupTreeView();
 	void updateBasicParameter();

@@ -169,6 +169,7 @@ MainWindow::MainWindow(PreferencesDialog * prefDialog, QWidget * parent) :
 	_firstCall(true),
 	_progressCanceled(false)
 {
+	ULogger::registerCurrentThread("MainWindow");
 	UDEBUG("");
 
 	initGuiResource();
@@ -515,6 +516,7 @@ MainWindow::MainWindow(PreferencesDialog * prefDialog, QWidget * parent) :
 	this->changeState(kIdle);
 	this->applyPrefSettings(PreferencesDialog::kPanelAll);
 
+	_ui->statsToolBox->setNewFigureMaxItems(50);
 	_ui->statsToolBox->setWorkingDirectory(_preferencesDialog->getWorkingDirectory());
 	_ui->graphicsView_graphView->setWorkingDirectory(_preferencesDialog->getWorkingDirectory());
 	_cloudViewer->setWorkingDirectory(_preferencesDialog->getWorkingDirectory());
@@ -924,7 +926,6 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 	if(!pose.isNull() && (_ui->dockWidget_cloudViewer->isVisible() || _ui->graphicsView_graphView->isVisible()))
 	{
 		_lastOdomPose = pose;
-		_odometryReceived = true;
 	}
 
 	if(_ui->dockWidget_cloudViewer->isVisible())
@@ -941,126 +942,112 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 			   (odom.data().cameraModels().size() || odom.data().stereoCameraModel().isValidForProjection()) &&
 			   _preferencesDialog->isCloudsShown(1))
 			{
-
-				if(odom.data().imageRaw().cols % _preferencesDialog->getCloudDecimation(1) != 0 ||
-				   odom.data().imageRaw().rows % _preferencesDialog->getCloudDecimation(1) != 0)
+				pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
+				pcl::IndicesPtr indices(new std::vector<int>);
+				cloud = util3d::cloudRGBFromSensorData(odom.data(),
+						_preferencesDialog->getCloudDecimation(1),
+						_preferencesDialog->getCloudMaxDepth(1),
+						_preferencesDialog->getCloudMinDepth(1),
+						indices.get(),
+						_preferencesDialog->getAllParameters());
+				if(indices->size())
 				{
-					UERROR("Decimation (%d) is not modulo of the image resolution (%dx%d)! The cloud cannot be "
-							"created. Go to Preferences->3D Rendering under \"Odom\" column to modify this parameter.",
-							_preferencesDialog->getCloudDecimation(1),
-							odom.data().imageRaw().cols,
-							odom.data().imageRaw().rows);
-				}
-				else
-				{
+					cloud = util3d::transformPointCloud(cloud, pose);
 
-					pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
-					pcl::IndicesPtr indices(new std::vector<int>);
-					cloud = util3d::cloudRGBFromSensorData(odom.data(),
-							_preferencesDialog->getCloudDecimation(1),
-							_preferencesDialog->getCloudMaxDepth(1),
-							_preferencesDialog->getCloudMinDepth(1),
-							indices.get(),
-							_preferencesDialog->getAllParameters());
-					if(indices->size())
+					if(_preferencesDialog->isCloudMeshing())
 					{
-						cloud = util3d::transformPointCloud(cloud, pose);
+						// we need to extract indices as pcl::OrganizedFastMesh doesn't take indices
+						pcl::PointCloud<pcl::PointXYZRGB>::Ptr output(new pcl::PointCloud<pcl::PointXYZRGB>);
+						output = util3d::extractIndices(cloud, indices, false, true);
 
-						if(_preferencesDialog->isCloudMeshing())
+						// Fast organized mesh
+						Eigen::Vector3f viewpoint(0.0f,0.0f,0.0f);
+						if(odom.data().cameraModels().size() && !odom.data().cameraModels()[0].localTransform().isNull())
 						{
-							// we need to extract indices as pcl::OrganizedFastMesh doesn't take indices
-							pcl::PointCloud<pcl::PointXYZRGB>::Ptr output(new pcl::PointCloud<pcl::PointXYZRGB>);
-							output = util3d::extractIndices(cloud, indices, false, true);
-
-							// Fast organized mesh
-							Eigen::Vector3f viewpoint(0.0f,0.0f,0.0f);
-							if(odom.data().cameraModels().size() && !odom.data().cameraModels()[0].localTransform().isNull())
+							viewpoint[0] = odom.data().cameraModels()[0].localTransform().x();
+							viewpoint[1] = odom.data().cameraModels()[0].localTransform().y();
+							viewpoint[2] = odom.data().cameraModels()[0].localTransform().z();
+						}
+						else if(!odom.data().stereoCameraModel().localTransform().isNull())
+						{
+							viewpoint[0] = odom.data().stereoCameraModel().localTransform().x();
+							viewpoint[1] = odom.data().stereoCameraModel().localTransform().y();
+							viewpoint[2] = odom.data().stereoCameraModel().localTransform().z();
+						}
+						std::vector<pcl::Vertices> polygons = util3d::organizedFastMesh(
+								output,
+								_preferencesDialog->getCloudMeshingAngle(),
+								_preferencesDialog->isCloudMeshingQuad(),
+								_preferencesDialog->getCloudMeshingTriangleSize(),
+								Eigen::Vector3f(pose.x(), pose.y(), pose.z()) + viewpoint);
+						if(polygons.size())
+						{
+							if(_preferencesDialog->isCloudMeshingTexture() && !odom.data().imageRaw().empty())
 							{
-								viewpoint[0] = odom.data().cameraModels()[0].localTransform().x();
-								viewpoint[1] = odom.data().cameraModels()[0].localTransform().y();
-								viewpoint[2] = odom.data().cameraModels()[0].localTransform().z();
-							}
-							else if(!odom.data().stereoCameraModel().localTransform().isNull())
-							{
-								viewpoint[0] = odom.data().stereoCameraModel().localTransform().x();
-								viewpoint[1] = odom.data().stereoCameraModel().localTransform().y();
-								viewpoint[2] = odom.data().stereoCameraModel().localTransform().z();
-							}
-							std::vector<pcl::Vertices> polygons = util3d::organizedFastMesh(
-									output,
-									_preferencesDialog->getCloudMeshingAngle(),
-									_preferencesDialog->isCloudMeshingQuad(),
-									_preferencesDialog->getCloudMeshingTriangleSize(),
-									Eigen::Vector3f(pose.x(), pose.y(), pose.z()) + viewpoint);
-							if(polygons.size())
-							{
-								if(_preferencesDialog->isCloudMeshingTexture() && !odom.data().imageRaw().empty())
+								pcl::TextureMesh::Ptr textureMesh(new pcl::TextureMesh);
+								pcl::toPCLPointCloud2(*cloud, textureMesh->cloud);
+								textureMesh->tex_polygons.push_back(polygons);
+								int w = cloud->width;
+								int h = cloud->height;
+								UASSERT(w > 1 && h > 1);
+								textureMesh->tex_coordinates.resize(1);
+								int nPoints = (int)(textureMesh->cloud.data.size()/textureMesh->cloud.point_step);
+								textureMesh->tex_coordinates[0].resize(nPoints);
+								for(int i=0; i<nPoints; ++i)
 								{
-									pcl::TextureMesh::Ptr textureMesh(new pcl::TextureMesh);
-									pcl::toPCLPointCloud2(*cloud, textureMesh->cloud);
-									textureMesh->tex_polygons.push_back(polygons);
-									int w = cloud->width;
-									int h = cloud->height;
-									UASSERT(w > 1 && h > 1);
-									textureMesh->tex_coordinates.resize(1);
-									int nPoints = textureMesh->cloud.data.size()/textureMesh->cloud.point_step;
-									textureMesh->tex_coordinates[0].resize(nPoints);
-									for(int i=0; i<nPoints; ++i)
-									{
-										//uv
-										textureMesh->tex_coordinates[0][i] = Eigen::Vector2f(
-												float(i % w) / float(w),      // u
-												float(h - i / w) / float(h)); // v
-									}
-
-									pcl::TexMaterial mesh_material;
-									mesh_material.tex_d = 1.0f;
-									mesh_material.tex_Ns = 75.0f;
-									mesh_material.tex_illum = 1;
-
-									mesh_material.tex_name = "material_odom";
-
-									QDir dir(_preferencesDialog->getWorkingDirectory());
-									ExportCloudsDialog::removeDirRecursively(_preferencesDialog->getWorkingDirectory()+QDir::separator()+"tmp_textures");
-									dir.mkdir("tmp_textures");
-
-									std::string tmpDirectory = dir.filePath("tmp_textures").toStdString();
-									mesh_material.tex_file = uFormat("%s/%s.png", tmpDirectory.c_str(), "texture_odom");
-									if(!cv::imwrite(mesh_material.tex_file, odom.data().imageRaw()))
-									{
-										UERROR("Cannot save texture of image odom");
-									}
-									else
-									{
-										UINFO("Saved temporary texture: \"%s\"", mesh_material.tex_file.c_str());
-									}
-
-									textureMesh->tex_materials.push_back(mesh_material);
-
-									if(!_cloudViewer->addCloudTextureMesh("cloudOdom", textureMesh, _odometryCorrection))
-									{
-										UERROR("Adding cloudOdom to viewer failed!");
-									}
+									//uv
+									textureMesh->tex_coordinates[0][i] = Eigen::Vector2f(
+											float(i % w) / float(w),      // u
+											float(h - i / w) / float(h)); // v
 								}
-								else if(!_cloudViewer->addCloudMesh("cloudOdom", output, polygons, _odometryCorrection))
+
+								pcl::TexMaterial mesh_material;
+								mesh_material.tex_d = 1.0f;
+								mesh_material.tex_Ns = 75.0f;
+								mesh_material.tex_illum = 1;
+
+								mesh_material.tex_name = "material_odom";
+
+								QDir dir(_preferencesDialog->getWorkingDirectory());
+								ExportCloudsDialog::removeDirRecursively(_preferencesDialog->getWorkingDirectory()+QDir::separator()+"tmp_textures");
+								dir.mkdir("tmp_textures");
+
+								std::string tmpDirectory = dir.filePath("tmp_textures").toStdString();
+								mesh_material.tex_file = uFormat("%s/%s.png", tmpDirectory.c_str(), "texture_odom");
+								if(!cv::imwrite(mesh_material.tex_file, odom.data().imageRaw()))
+								{
+									UERROR("Cannot save texture of image odom");
+								}
+								else
+								{
+									UINFO("Saved temporary texture: \"%s\"", mesh_material.tex_file.c_str());
+								}
+
+								textureMesh->tex_materials.push_back(mesh_material);
+
+								if(!_cloudViewer->addCloudTextureMesh("cloudOdom", textureMesh, _odometryCorrection))
 								{
 									UERROR("Adding cloudOdom to viewer failed!");
 								}
 							}
-						}
-						else
-						{
-							if(!_cloudViewer->addCloud("cloudOdom", cloud, _odometryCorrection))
+							else if(!_cloudViewer->addCloudMesh("cloudOdom", output, polygons, _odometryCorrection))
 							{
 								UERROR("Adding cloudOdom to viewer failed!");
 							}
 						}
-						_cloudViewer->setCloudVisibility("cloudOdom", true);
-						_cloudViewer->setCloudOpacity("cloudOdom", _preferencesDialog->getCloudOpacity(1));
-						_cloudViewer->setCloudPointSize("cloudOdom", _preferencesDialog->getCloudPointSize(1));
-
-						cloudUpdated = true;
 					}
+					else
+					{
+						if(!_cloudViewer->addCloud("cloudOdom", cloud, _odometryCorrection))
+						{
+							UERROR("Adding cloudOdom to viewer failed!");
+						}
+					}
+					_cloudViewer->setCloudVisibility("cloudOdom", true);
+					_cloudViewer->setCloudOpacity("cloudOdom", _preferencesDialog->getCloudOpacity(1));
+					_cloudViewer->setCloudPointSize("cloudOdom", _preferencesDialog->getCloudPointSize(1));
+
+					cloudUpdated = true;
 				}
 			}
 
@@ -1069,19 +1056,22 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 				// F2M: scan local map
 				if(!odom.info().localScanMap.empty())
 				{
-					pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
-					cloud = util3d::laserScanToPointCloudNormal(odom.info().localScanMap);
-					if(!_cloudViewer->addCloud("scanMapOdom", cloud, _odometryCorrection, Qt::blue))
+					if(!lost)
 					{
-						UERROR("Adding scanMapOdom to viewer failed!");
+						pcl::PointCloud<pcl::PointNormal>::Ptr cloud;
+						cloud = util3d::laserScanToPointCloudNormal(odom.info().localScanMap);
+						if(!_cloudViewer->addCloud("scanMapOdom", cloud, _odometryCorrection, Qt::blue))
+						{
+							UERROR("Adding scanMapOdom to viewer failed!");
+						}
+						else
+						{
+							_cloudViewer->setCloudVisibility("scanMapOdom", true);
+							_cloudViewer->setCloudOpacity("scanMapOdom", _preferencesDialog->getScanOpacity(1));
+							_cloudViewer->setCloudPointSize("scanMapOdom", _preferencesDialog->getScanPointSize(1));
+						}
 					}
-					else
-					{
-						_cloudViewer->setCloudVisibility("scanMapOdom", true);
-						_cloudViewer->setCloudOpacity("scanMapOdom", _preferencesDialog->getScanOpacity(1));
-						_cloudViewer->setCloudPointSize("scanMapOdom", _preferencesDialog->getScanPointSize(1));
-						scanUpdated = true;
-					}
+					scanUpdated = true;
 				}
 				// scan cloud
 				if(!odom.data().laserScanRaw().empty())
@@ -1115,9 +1105,9 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 			}
 
 			// 3d features
-			if(_preferencesDialog->isFeaturesShown(1))
+			if(_preferencesDialog->isFeaturesShown(1) && !odom.info().localMap.empty())
 			{
-				if(!odom.info().localMap.empty())
+				if(!lost)
 				{
 					pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
 					cloud->resize(odom.info().localMap.size());
@@ -1138,9 +1128,8 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 					_cloudViewer->addCloud("featuresOdom", cloud, _odometryCorrection);
 					_cloudViewer->setCloudVisibility("featuresOdom", true);
 					_cloudViewer->setCloudPointSize("featuresOdom", _preferencesDialog->getFeaturesPointSize(1));
-
-					featuresUpdated = true;
 				}
+				featuresUpdated = true;
 			}
 		}
 		if(!dataIgnored)
@@ -1166,6 +1155,7 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 
 	if(!odom.pose().isNull())
 	{
+		_odometryReceived = true;
 		// update camera position
 		_cloudViewer->updateCameraTargetPosition(_odometryCorrection*odom.pose());
 
@@ -1243,7 +1233,7 @@ void MainWindow::processOdometry(const rtabmap::OdometryEvent & odom, bool dataI
 			}
 
 			_ui->imageView_odometry->setImage(uCvMat2QImage(odom.data().imageRaw()));
-			if(_ui->imageView_odometry->isImageDepthShown())
+			if(_ui->imageView_odometry->isImageDepthShown() && !odom.data().depthOrRightRaw().empty())
 			{
 				_ui->imageView_odometry->setImageDepth(uCvMat2QImage(odom.data().depthOrRightRaw()));
 			}
@@ -1432,7 +1422,9 @@ void MainWindow::processStats(const rtabmap::Statistics & stat)
 			signature = stat.getSignatures().at(stat.refImageId());
 			signature.sensorData().uncompressData(); // make sure data are uncompressed
 
-			if(!smallMovement)
+			if(!smallMovement && 
+			   uStr2Bool(_preferencesDialog->getParameter(Parameters::kMemIncrementalMemory())) &&
+				signature.getWeight()>=0) // ignore intermediate nodes for the cache
 			{
 				_cachedSignatures.insert(signature.id(), signature);
 				_cachedMemoryUsage += signature.sensorData().getMemoryUsed();
@@ -2128,14 +2120,17 @@ void MainWindow::updateMapCloud(
 					{
 						cv::Mat ground;
 						cv::Mat obstacles;
-						jter->sensorData().uncompressDataConst(0, 0, 0, 0, &ground, &obstacles);
-						_gridLocalMaps.insert(std::make_pair(iter->first, std::make_pair(ground, obstacles)));
-						_gridViewPoints.insert(std::make_pair(iter->first, jter->sensorData().gridViewPoint()));
-						_cachedGridsMemoryUsage += ground.total()*ground.elemSize() + obstacles.total()*obstacles.elemSize();
-
-						if(ground.cols || obstacles.cols)
+						if (jter->sensorData().gridCellSize() > 0.0f)
 						{
-							_occupancyGrid->addToCache(iter->first, ground, obstacles);
+							jter->sensorData().uncompressDataConst(0, 0, 0, 0, &ground, &obstacles);
+							_gridLocalMaps.insert(std::make_pair(iter->first, std::make_pair(ground, obstacles)));
+							_gridViewPoints.insert(std::make_pair(iter->first, jter->sensorData().gridViewPoint()));
+							_cachedGridsMemoryUsage += (long)(ground.total()*ground.elemSize() + obstacles.total()*obstacles.elemSize());
+
+							if (ground.cols || obstacles.cols)
+							{
+								_occupancyGrid->addToCache(iter->first, ground, obstacles);
+							}
 						}
 					}
 #ifdef RTABMAP_OCTOMAP
@@ -2454,7 +2449,7 @@ void MainWindow::updateMapCloud(
 			UDEBUG("");
 			_cloudViewer->setCloudVisibility("scanMapOdom", false);
 		}
-		else
+		else if(_cloudViewer->getBackgroundColor() != Qt::darkRed) // not lost
 		{
 			UDEBUG("");
 			_cloudViewer->updateCloudPose("scanMapOdom", _odometryCorrection);
@@ -2469,7 +2464,7 @@ void MainWindow::updateMapCloud(
 			UDEBUG("");
 			_cloudViewer->setCloudVisibility("featuresOdom", false);
 		}
-		else
+		else if(_cloudViewer->getBackgroundColor() != Qt::darkRed) // not lost
 		{
 			UDEBUG("");
 			_cloudViewer->updateCloudPose("featuresOdom", _odometryCorrection);
@@ -2513,17 +2508,6 @@ std::pair<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, pcl::IndicesPtr> MainWindow::c
 		pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud;
 		pcl::IndicesPtr indices(new std::vector<int>);
 		UASSERT(nodeId == data.id());
-
-		if(image.cols % _preferencesDialog->getCloudDecimation(0) != 0 ||
-		   image.rows % _preferencesDialog->getCloudDecimation(0) != 0)
-		{
-			UERROR("Decimation (%d) is not modulo of the image resolution (%dx%d)! The cloud cannot be "
-					"created. Go to Preferences->3D Rendering under \"Map\" column to modify this parameter.",
-					_preferencesDialog->getCloudDecimation(0),
-					image.cols,
-					image.rows);
-			return outputPair;
-		}
 
 		// Create organized cloud
 		cloud = util3d::cloudRGBFromSensorData(data,
@@ -2690,12 +2674,12 @@ std::pair<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, pcl::IndicesPtr> MainWindow::c
 						int h = cloud->height;
 						UASSERT(w > 1 && h > 1);
 						textureMesh->tex_coordinates.resize(1);
-						unsigned int nPoints = outputFiltered->size();
+						int nPoints = (int)outputFiltered->size();
 						textureMesh->tex_coordinates[0].resize(nPoints);
-						for(unsigned int i=0; i<nPoints; ++i)
+						for(int i=0; i<nPoints; ++i)
 						{
 							//uv
-							UASSERT(i < denseToOrganizedIndices.size());
+							UASSERT(i < (int)denseToOrganizedIndices.size());
 							int originalVertex = denseToOrganizedIndices[i];
 							textureMesh->tex_coordinates[0][i] = Eigen::Vector2f(
 									float(originalVertex % w) / float(w),      // u
@@ -2807,7 +2791,7 @@ std::pair<pcl::PointCloud<pcl::PointXYZRGB>::Ptr, pcl::IndicesPtr> MainWindow::c
 				if(_preferencesDialog->isCloudsKept())
 				{
 					_cachedClouds.insert(std::make_pair(nodeId, outputPair));
-					_createdCloudsMemoryUsage += output->size() * sizeof(pcl::PointXYZRGB) + indices->size()*sizeof(int);
+					_createdCloudsMemoryUsage += (long)(output->size() * sizeof(pcl::PointXYZRGB) + indices->size()*sizeof(int));
 				}
 			}
 		}
@@ -3009,7 +2993,7 @@ Transform MainWindow::alignPosesToGroundTruth(
 		const std::map<int, Transform> & groundTruth)
 {
 	Transform t = Transform::getIdentity();
-	if(groundTruth.size() && poses.size())
+	if(groundTruth.size() && poses.size() && _preferencesDialog->isGroundTruthAligned())
 	{
 		unsigned int maxSize = poses.size()>groundTruth.size()? (unsigned int)poses.size(): (unsigned int)groundTruth.size();
 		pcl::PointCloud<pcl::PointXYZ> cloud1, cloud2;
@@ -3474,6 +3458,7 @@ void MainWindow::applyPrefSettings(PreferencesDialog::PANEL_FLAGS flags)
 						 (_preferencesDialog->getWorkingDirectory()+QDir::separator()+LOG_FILE_NAME).toStdString(), true);
 		ULogger::setPrintTime(_preferencesDialog->getGeneralLoggerPrintTime());
 		ULogger::setPrintThreadId(_preferencesDialog->getGeneralLoggerPrintThreadId());
+		ULogger::setTreadIdFilter(_preferencesDialog->getGeneralLoggerThreads());
 	}
 }
 
@@ -3546,6 +3531,10 @@ void MainWindow::drawKeypoints(const std::multimap<int, cv::KeyPoint> & refWords
 
 	timer.start();
 	ULOGGER_DEBUG("refWords.size() = %d", refWords.size());
+	if(refWords.size())
+	{
+		_ui->imageView_source->clearFeatures();
+	}
 	for(std::multimap<int, cv::KeyPoint>::const_iterator iter = refWords.begin(); iter != refWords.end(); ++iter )
 	{
 		int id = iter->first;
@@ -3582,6 +3571,10 @@ void MainWindow::drawKeypoints(const std::multimap<int, cv::KeyPoint> & refWords
 	timer.start();
 	ULOGGER_DEBUG("loopWords.size() = %d", loopWords.size());
 	QList<QPair<cv::Point2f, cv::Point2f> > uniqueCorrespondences;
+	if(loopWords.size())
+	{
+		_ui->imageView_loopClosure->clearFeatures();
+	}
 	for(std::multimap<int, cv::KeyPoint>::const_iterator iter = loopWords.begin(); iter != loopWords.end(); ++iter )
 	{
 		int id = iter->first;
@@ -3647,6 +3640,12 @@ void MainWindow::drawKeypoints(const std::multimap<int, cv::KeyPoint> & refWords
 	else
 	{
 		deltaX = _ui->imageView_source->width();
+	}
+
+	if(refWords.size() && loopWords.size())
+	{
+		_ui->imageView_source->clearLines();
+		_ui->imageView_loopClosure->clearLines();
 	}
 
 	for(QList<QPair<cv::Point2f, cv::Point2f> >::iterator iter = uniqueCorrespondences.begin();
@@ -3818,6 +3817,22 @@ void MainWindow::configGUIModified()
 	this->setWindowModified(true);
 }
 
+void MainWindow::updateParameters(const ParametersMap & parameters)
+{
+	if(parameters.size())
+	{
+		for(ParametersMap::const_iterator iter= parameters.begin(); iter!=parameters.end(); ++iter)
+		{
+			QString msg = tr("Parameter update \"%1\"=\"%2\"")
+							.arg(iter->first.c_str())
+							.arg(iter->second.c_str());
+			_ui->widget_console->appendMsg(msg);
+			UWARN(msg.toStdString().c_str());
+		}
+		_preferencesDialog->updateParameters(parameters);
+	}
+}
+
 //ACTIONS
 void MainWindow::saveConfigGUI()
 {
@@ -3924,6 +3939,12 @@ void MainWindow::openDatabase(const QString & path)
 
 			if(parameters.size())
 			{
+				//backward compatibility with databases not saving all parameters, use default for not saved ones
+				for(ParametersMap::const_iterator iter=Parameters::getDefaultParameters().begin(); iter!=Parameters::getDefaultParameters().end(); ++iter)
+				{
+					parameters.insert(*iter);
+				}
+
 				ParametersMap currentParameters = _preferencesDialog->getAllParameters();
 				ParametersMap differentParameters;
 				for(ParametersMap::iterator iter=parameters.begin(); iter!=parameters.end(); ++iter)
@@ -4086,22 +4107,43 @@ void MainWindow::startDetection()
 				return;
 			}
 		}
-		if(bufferingSize != 0 &&
-		  (_preferencesDialog->getSourceDriver() != PreferencesDialog::kSrcDatabase || !_preferencesDialog->isSourceDatabaseStampsUsed()))
+		if(_preferencesDialog->getSourceDriver() != PreferencesDialog::kSrcDatabase || !_preferencesDialog->isSourceDatabaseStampsUsed())
 		{
-			int button = QMessageBox::question(this,
-					tr("Some images may be skipped!"),
-					tr("\"RTAB-Map/Images buffer size\" is not infinite (size=%1). As the "
-					   "source input is a directory of images/video/database, some images may be "
-					   "skipped by the detector if the \"Source/Input rate\" (which is %2 Hz) is higher than the "
-					   "rate at which RTAB-Map can process the images. You may want to set the "
-					   "\"RTAB-Map/Images buffer size\" to 0 (infinite) to guaranty that all "
-					   "images are processed. Would you want to start the detection "
-					   "anyway?").arg(bufferingSize).arg(inputRate),
-					 QMessageBox::Yes | QMessageBox::No);
-			if(button == QMessageBox::No)
+			if(bufferingSize != 0)
 			{
-				return;
+				int button = QMessageBox::question(this,
+						tr("Some images may be skipped!"),
+						tr("\"RTAB-Map/Images buffer size\" is not infinite (size=%1). As the "
+						   "source input is a directory of images/video/database, some images may be "
+						   "skipped by the detector if the \"Source/Input rate\" (which is %2 Hz) is higher than the "
+						   "rate at which RTAB-Map can process the images. You may want to set the "
+						   "\"RTAB-Map/Images buffer size\" to 0 (infinite) to guaranty that all "
+						   "images are processed. Would you want to start the detection "
+						   "anyway?").arg(bufferingSize).arg(inputRate),
+						 QMessageBox::Yes | QMessageBox::No);
+				if(button == QMessageBox::No)
+				{
+					return;
+				}
+			}
+			else if(inputRate == 0)
+			{
+				int button = QMessageBox::question(this,
+						tr("Large number of images may be buffered!"),
+						tr("\"RTAB-Map/Images buffer size\" is infinite. As the "
+						   "source input is a directory of images/video/database and "
+						   "that \"Source/Input rate\" is infinite too, a lot of images "
+						   "could be buffered at the same time (e.g., reading all images "
+						   "of a directory at once). This could make the GUI not responsive. "
+						   "You may want to set \"Source/Input rate\" at the rate at "
+						   "which the images have been recorded. "
+						   "Would you want to start the detection "
+						   "anyway?").arg(bufferingSize).arg(inputRate),
+						 QMessageBox::Yes | QMessageBox::No);
+				if(button == QMessageBox::No)
+				{
+					return;
+				}
 			}
 		}
 	}
@@ -4190,7 +4232,7 @@ void MainWindow::startDetection()
 				_odomThread = 0;
 			}
 
-			if(!camera->odomProvided())
+			if(!camera->odomProvided() && !_preferencesDialog->isOdomDisabled())
 			{
 				Odometry * odom = Odometry::create(parameters);
 				_odomThread = new OdometryThread(odom, _preferencesDialog->getOdomBufferSize());
@@ -4235,6 +4277,13 @@ void MainWindow::startDetection()
 
 	_occupancyGrid->clear();
 	_occupancyGrid->parseParameters(parameters);
+
+	// clear odometry visual stuff
+	_cloudViewer->removeCloud("cloudOdom");
+	_cloudViewer->removeCloud("scanOdom");
+	_cloudViewer->removeCloud("scanMapOdom");
+	_cloudViewer->removeCloud("featuresOdom");
+	_cloudViewer->setBackgroundColor(_cloudViewer->getDefaultBackgroundColor());
 
 	emit stateChanged(kDetecting);
 }
@@ -4632,9 +4681,9 @@ void MainWindow::postProcessing()
 							{
 								Transform transform;
 								RegistrationInfo info;
-								RegistrationVis registration(parameters);
-								transform = registration.computeTransformation(signatureFrom, signatureTo, Transform(), &info);
-
+								Registration * registration = Registration::create(parameters);
+								transform = registration->computeTransformation(signatureFrom, signatureTo, Transform(), &info);
+								delete registration;
 								if(!transform.isNull())
 								{
 									UINFO("Added new loop closure between %d and %d.", from, to);
@@ -5243,6 +5292,7 @@ void MainWindow::clearTheCache()
 	_currentLabels.clear();
 	_odometryCorrection = Transform::getIdentity();
 	_lastOdomPose.setNull();
+	_ui->statsToolBox->clear();
 	//disable save cloud action
 	_ui->actionExport_2D_Grid_map_bmp_png->setEnabled(false);
 	_ui->actionExport_2D_scans_ply_pcd->setEnabled(false);

@@ -57,6 +57,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QInputDialog>
+#include <QDesktopWidget>
 
 namespace rtabmap {
 
@@ -352,7 +353,7 @@ void ExportCloudsDialog::restoreDefaults()
 	_ui->doubleSpinBox_gainOverlap->setValue(0.05);
 	_ui->doubleSpinBox_gainAlpha->setValue(0.01);
 	_ui->doubleSpinBox_gainBeta->setValue(10);
-	_ui->checkBox_gainLinkedLocationsOnly->setChecked(false);
+	_ui->checkBox_gainLinkedLocationsOnly->setChecked(true);
 
 	_ui->groupBox_meshing->setChecked(false);
 	_ui->doubleSpinBox_gp3Radius->setValue(0.04);
@@ -363,7 +364,7 @@ void ExportCloudsDialog::restoreDefaults()
 
 	_ui->doubleSpinBox_mesh_angleTolerance->setValue(15.0);
 	_ui->checkBox_mesh_quad->setChecked(false);
-	_ui->spinBox_mesh_triangleSize->setValue(2);
+	_ui->spinBox_mesh_triangleSize->setValue(1);
 
 	updateReconstructionFlavor();
 	updateTexturingAvailability();
@@ -524,8 +525,9 @@ void ExportCloudsDialog::viewClouds(
 		{
 			window->setWindowTitle(tr("Clouds (%1 nodes)").arg(clouds.size()));
 		}
-		window->setMinimumWidth(800);
-		window->setMinimumHeight(600);
+		window->setMinimumWidth(120);
+		window->setMinimumHeight(90);
+		window->resize(QDesktopWidget().availableGeometry(this).size() * 0.7);
 
 		CloudViewer * viewer = new CloudViewer(window);
 		viewer->setCameraLockZ(false);
@@ -536,6 +538,7 @@ void ExportCloudsDialog::viewClouds(
 
 		QVBoxLayout *layout = new QVBoxLayout();
 		layout->addWidget(viewer);
+		layout->setContentsMargins(0,0,0,0);
 		window->setLayout(layout);
 		connect(window, SIGNAL(finished(int)), viewer, SLOT(clear()));
 
@@ -733,7 +736,14 @@ bool ExportCloudsDialog::getExportedClouds(
 		GainCompensator compensator(_ui->doubleSpinBox_gainRadius->value(), _ui->doubleSpinBox_gainOverlap->value(), _ui->doubleSpinBox_gainAlpha->value(), _ui->doubleSpinBox_gainBeta->value());
 		if(_ui->groupBox_gain->isChecked() && clouds.size() > 1)
 		{
-			_progressDialog->appendText(tr("Gain compensation of %1 clouds...").arg(clouds.size()));
+			if(!_ui->checkBox_gainLinkedLocationsOnly->isChecked())
+			{
+				_progressDialog->appendText(tr("Full gain compensation of %1 clouds...").arg(clouds.size()));
+			}
+			else
+			{
+				_progressDialog->appendText(tr("Gain compensation of %1 clouds...").arg(clouds.size()));
+			}
 			QApplication::processEvents();
 			QApplication::processEvents();
 

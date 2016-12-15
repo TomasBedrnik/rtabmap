@@ -117,12 +117,12 @@ void RtabmapThread::createIntermediateNodes(bool enabled)
 	_createIntermediateNodes = enabled;
 }
 
-void RtabmapThread::close(bool databaseSaved)
+void RtabmapThread::close(bool databaseSaved, const std::string & ouputDatabasePath)
 {
 	this->join(true);
 	if(_rtabmap)
 	{
-		_rtabmap->close(databaseSaved);
+		_rtabmap->close(databaseSaved, ouputDatabasePath);
 		delete _rtabmap;
 		_rtabmap = 0;
 	}
@@ -171,6 +171,7 @@ void RtabmapThread::publishMap(bool optimized, bool full, bool graphOnly) const
 
 void RtabmapThread::mainLoopBegin()
 {
+	ULogger::registerCurrentThread("Rtabmap");
 	if(_rtabmap == 0)
 	{
 		UERROR("Cannot start rtabmap thread if no rtabmap object is set! Stopping the thread...");
@@ -240,7 +241,7 @@ void RtabmapThread::mainLoop()
 			UWARN("Closing... %d data still buffered! They will be cleared.", (int)_dataBuffer.size());
 			this->clearBufferedData();
 		}
-		_rtabmap->close(uStr2Bool(parameters.at("saved")));
+		_rtabmap->close(uStr2Bool(parameters.at("saved")), parameters.at("outputPath"));
 		break;
 	case kStateDumpingMemory:
 		_rtabmap->dumpData();
@@ -335,7 +336,7 @@ void RtabmapThread::handleEvent(UEvent* event)
 			{
 				if (_rtabmap->isRGBDMode())
 				{
-					if (!e->info().odomPose.isNull())
+					if (!e->info().odomPose.isNull() || (_rtabmap->getMemory() && !_rtabmap->getMemory()->isIncremental()))
 					{
 						this->addData(OdometryEvent(e->data(), e->info().odomPose, e->info().odomCovariance));
 					}
@@ -346,7 +347,7 @@ void RtabmapThread::handleEvent(UEvent* event)
 				}
 				else
 				{ 
-					this->addData(OdometryEvent(e->data(), Transform(), 1, 1));
+					this->addData(OdometryEvent(e->data(), e->info().odomPose, e->info().odomCovariance));
 				}
 				
 			}
@@ -355,7 +356,7 @@ void RtabmapThread::handleEvent(UEvent* event)
 		{
 			UDEBUG("OdometryEvent");
 			OdometryEvent * e = (OdometryEvent*)event;
-			if(!e->pose().isNull())
+			if(!e->pose().isNull() || (_rtabmap->getMemory() && !_rtabmap->getMemory()->isIncremental()))
 			{
 				this->addData(*e);
 			}
@@ -408,6 +409,7 @@ void RtabmapThread::handleEvent(UEvent* event)
 				UASSERT(rtabmapEvent->value1().isUndef() || rtabmapEvent->value1().isBool());
 				ParametersMap param;
 				param.insert(ParametersPair("saved", uBool2Str(rtabmapEvent->value1().isUndef() || rtabmapEvent->value1().toBool())));
+				param.insert(ParametersPair("outputPath", rtabmapEvent->value2().toStr()));
 				pushNewState(kStateClose, param);
 			}
 			else if(cmd == RtabmapEventCmd::kCmdResetMemory)
@@ -628,7 +630,10 @@ void RtabmapThread::addData(const OdometryEvent & odomEvent)
 		_transVariance = 0;
 		while(_dataBufferMaxSize > 0 && _dataBuffer.size() > _dataBufferMaxSize)
 		{
-			ULOGGER_WARN("Data buffer is full, the oldest data is removed to add the new one.");
+			if(_rate > 0.0f)
+			{
+				ULOGGER_WARN("Data buffer is full, the oldest data is removed to add the new one.");
+			}
 			_dataBuffer.pop_front();
 			notify = false;
 		}

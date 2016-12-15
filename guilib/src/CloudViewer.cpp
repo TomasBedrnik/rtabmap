@@ -52,7 +52,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <vtkGlyph3D.h>
 #include <vtkGlyph3DMapper.h>
 #include <vtkLookupTable.h>
-#if PCL_VERSION_COMPARE(<, 1, 7, 2)
 #include <vtkTextureUnitManager.h>
 #include <vtkJPEGReader.h>
 #include <vtkBMPReader.h>
@@ -60,7 +59,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <vtkPNGReader.h>
 #include <vtkTIFFReader.h>
 #include <vtkOpenGLRenderWindow.h>
-#endif
 
 #ifdef RTABMAP_OCTOMAP
 #include <rtabmap/core/OctoMap.h>
@@ -130,6 +128,7 @@ CloudViewer::CloudViewer(QWidget *parent) :
 		_aSetRenderingRate(0),
 		_aSetLighting(0),
 		_aSetEdgeVisibility(0),
+		_aBackfaceCulling(0),
 		_menu(0),
 		_trajectory(new pcl::PointCloud<pcl::PointXYZ>),
 		_maxTrajectorySize(100),
@@ -142,7 +141,6 @@ CloudViewer::CloudViewer(QWidget *parent) :
 		_workingDirectory("."),
 		_defaultBgColor(Qt::black),
 		_currentBgColor(Qt::black),
-		_backfaceCulling(false),
 		_frontfaceCulling(false),
 		_renderingRate(5.0),
 		_octomapActor(0)
@@ -243,6 +241,9 @@ void CloudViewer::createMenu()
 	_aSetEdgeVisibility = new QAction("Show edges", this);
 	_aSetEdgeVisibility->setCheckable(true);
 	_aSetEdgeVisibility->setChecked(false);
+	_aBackfaceCulling = new QAction("Backface culling", this);
+	_aBackfaceCulling->setCheckable(true);
+	_aBackfaceCulling->setChecked(true);
 
 	QMenu * cameraMenu = new QMenu("Camera", this);
 	cameraMenu->addAction(_aLockCamera);
@@ -281,6 +282,7 @@ void CloudViewer::createMenu()
 	_menu->addAction(_aSetRenderingRate);
 	_menu->addAction(_aSetLighting);
 	_menu->addAction(_aSetEdgeVisibility);
+	_menu->addAction(_aBackfaceCulling);
 }
 
 void CloudViewer::saveSettings(QSettings & settings, const QString & group) const
@@ -544,14 +546,8 @@ bool CloudViewer::addCloudMesh(
 	{
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
-		if(_backfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->BackfaceCullingOn();
-		}
-		if(_frontfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->FrontfaceCullingOn();
-		}
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
 		_visualizer->updatePointCloudPose(id, pose.toEigen3f());
 		_addedClouds.insert(id, pose);
 		return true;
@@ -575,14 +571,8 @@ bool CloudViewer::addCloudMesh(
 	{
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
-		if(_backfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->BackfaceCullingOn();
-		}
-		if(_frontfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->FrontfaceCullingOn();
-		}
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
 		_visualizer->updatePointCloudPose(id, pose.toEigen3f());
 		_addedClouds.insert(id, pose);
 		return true;
@@ -606,14 +596,8 @@ bool CloudViewer::addCloudMesh(
 	{
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
-		if(_backfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->BackfaceCullingOn();
-		}
-		if(_frontfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->FrontfaceCullingOn();
-		}
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
 		_visualizer->updatePointCloudPose(id, pose.toEigen3f());
 		_addedClouds.insert(id, pose);
 		return true;
@@ -636,14 +620,8 @@ bool CloudViewer::addCloudMesh(
 	{
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
-		if(_backfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->BackfaceCullingOn();
-		}
-		if(_frontfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->FrontfaceCullingOn();
-		}
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
 		_visualizer->updatePointCloudPose(id, pose.toEigen3f());
 		_addedClouds.insert(id, pose);
 		return true;
@@ -667,14 +645,8 @@ bool CloudViewer::addCloudTextureMesh(
 	{
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
 		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
-		if(_backfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->BackfaceCullingOn();
-		}
-		if(_frontfaceCulling)
-		{
-			_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->FrontfaceCullingOn();
-		}
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		_visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
 		if(!textureMesh->cloud.is_dense)
 		{
 			_visualizer->getCloudActorMap()->find(id)->second.actor->GetTexture()->SetInterpolate(1);
@@ -792,7 +764,6 @@ void CloudViewer::removeOctomap()
 #endif
 }
 
-#if PCL_VERSION_COMPARE(<, 1, 7, 2)
 // Copied from PCL 1.8
 int textureFromTexMaterial (const pcl::TexMaterial& tex_mat,
                             vtkTexture* vtk_tex)
@@ -913,20 +884,13 @@ int textureFromTexMaterial (const pcl::TexMaterial& tex_mat,
 
   return (0);
 }
-#endif
 
 bool CloudViewer::addTextureMesh (
 	   const pcl::TextureMesh &mesh,
 	   const std::string &id,
 	   int viewport)
 {
-#if PCL_VERSION_COMPARE(>=, 1, 7, 2)
-	if(!_visualizer->addTextureMesh(mesh, id, viewport))
-	{
-		return false;
-	}
-#else
-	// Copied from PCL 1.8
+	// Copied from PCL 1.8, modified to ignore vertex color
 
   pcl::visualization::CloudActorMap::iterator am_it = _visualizer->getCloudActorMap()->find (id);
   if (am_it != _visualizer->getCloudActorMap()->end ())
@@ -982,8 +946,8 @@ bool CloudViewer::addTextureMesh (
   vtkSmartPointer<vtkUnsignedCharArray> colors = vtkSmartPointer<vtkUnsignedCharArray>::New ();
   bool has_color = false;
   vtkSmartPointer<vtkMatrix4x4> transformation = vtkSmartPointer<vtkMatrix4x4>::New ();
-  if ((pcl::getFieldIndex(mesh.cloud, "rgba") != -1) ||
-      (pcl::getFieldIndex(mesh.cloud, "rgb") != -1))
+  if (0)//(pcl::getFieldIndex(mesh.cloud, "rgba") != -1) ||
+      //(pcl::getFieldIndex(mesh.cloud, "rgb") != -1))
   {
     pcl::PointCloud<pcl::PointXYZRGB> cloud;
     pcl::fromPCLPointCloud2(mesh.cloud, cloud);
@@ -1160,10 +1124,10 @@ bool CloudViewer::addTextureMesh (
   // Save the viewpoint transformation matrix to the global actor map
   (*_visualizer->getCloudActorMap())[id].viewpoint_transformation_ = transformation;
 
-#endif
-
   _visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetLighting(_aSetLighting->isChecked());
   _visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetEdgeVisibility(_aSetEdgeVisibility->isChecked());
+  _visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+  _visualizer->getCloudActorMap()->find(id)->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
   return true;
 }
 
@@ -1745,8 +1709,16 @@ Transform CloudViewer::getTargetPose() const
 
 void CloudViewer::setBackfaceCulling(bool enabled, bool frontfaceCulling)
 {
-	_backfaceCulling = enabled;
+	_aBackfaceCulling->setChecked(enabled);
 	_frontfaceCulling = frontfaceCulling;
+
+	pcl::visualization::CloudActorMapPtr cloudActorMap = _visualizer->getCloudActorMap();
+	for(pcl::visualization::CloudActorMap::iterator iter=cloudActorMap->begin(); iter!=cloudActorMap->end(); ++iter)
+	{
+		iter->second.actor->GetProperty()->SetBackfaceCulling(_aBackfaceCulling->isChecked());
+		iter->second.actor->GetProperty()->SetFrontfaceCulling(_frontfaceCulling);
+	}
+	this->update();
 }
 
 void CloudViewer::setRenderingRate(double rate)
@@ -2518,6 +2490,10 @@ void CloudViewer::handleAction(QAction * a)
 	else if(a == _aSetEdgeVisibility)
 	{
 		this->setEdgeVisibility(_aSetEdgeVisibility->isChecked());
+	}
+	else if(a == _aBackfaceCulling)
+	{
+		this->setBackfaceCulling(_aBackfaceCulling->isChecked(), _frontfaceCulling);
 	}
 }
 

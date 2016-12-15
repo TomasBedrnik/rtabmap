@@ -485,7 +485,7 @@ void VWDictionary::update()
 					break;
 				case kNNFlannKdTree:
 					UASSERT_MSG(type == CV_32F, "To use KdTree dictionary, float descriptors are required!");
-					_flannIndex->buildKDTreeIndex(_dataTree, useDistanceL1_);
+					_flannIndex->buildKDTreeIndex(_dataTree, 4, useDistanceL1_);
 					break;
 				case kNNFlannLSH:
 					UASSERT_MSG(type == CV_8U, "To use LSH dictionary, binary descriptors are required!");
@@ -1193,6 +1193,10 @@ void VWDictionary::addWord(VisualWord * vw)
 		else
 		{
 			_unusedWords.insert(std::pair<int, VisualWord *>(vw->id(), vw));
+		}
+		if(_lastWordId < vw->id())
+		{
+			_lastWordId = vw->id();
 		}
 	}
 }
