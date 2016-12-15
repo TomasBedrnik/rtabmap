@@ -55,6 +55,7 @@ int main(int argc, char **argv)
     std::string rgb_path = "";
     std::string depth_path = "";
     std::string calibration = "";
+    std::string configFile = "";
     float freq = 0;
     bool binary = true;
     bool dir_paths = false;
@@ -92,6 +93,11 @@ int main(int argc, char **argv)
             calibration = arg.substr(12,arg.length()-12);
             std::cout << "Calibration Path:   " << calibration << ";" << std::endl;
         }
+        else if(arg.substr(0,6) == "config")
+        {
+            configFile = arg.substr(7,arg.length()-7);
+            std::cout << "Config File Path:   " << configFile << ";" << std::endl;
+        }
         else if(arg.substr(0,4) == "text")
         {
             binary = false;
@@ -118,6 +124,8 @@ int main(int argc, char **argv)
         std::cout << "-calibration    -calibration=/tmp/calib.yaml" << std::endl;
         std::cout << "     Calibration .yaml file." << std::endl;
         std::cout << "     If not set, dir /default.yaml is used." << std::endl;
+        std::cout << "-config    -config=/tmp/config.ini" << std::endl;
+        std::cout << "     Configureation file from RTAB Map application." << std::endl;
         std::cout << "-text" << std::endl;
         std::cout << "     Store data in textfiles, default is binary form." << std::endl;
         std::cout << " --------------------------------------" << std::endl;
@@ -211,7 +219,8 @@ int main(int argc, char **argv)
 
     // Create RTAB-Map to process OdometryEvent
     Rtabmap * rtabmap = new Rtabmap();
-    rtabmap->init();
+    std::string databaseFile;
+    rtabmap->init(configFile, databaseFile);
     RtabmapThread rtabmapThread(rtabmap); // ownership is transfered
 
     // Setup handlers
